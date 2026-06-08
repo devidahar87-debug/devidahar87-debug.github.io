@@ -1,11 +1,11 @@
 // Regular Expressions migrated from your Python script
-const DEFAULT_TX_REGEX = /^(?<date>\d{2}\/\d{2})\s+(?<header>.+?)\s+(?<amount>(?:\d{1,3}(?:,\d{3})*|\d+)?\.\d{2})(?<sign>[+-])\s+(?<balance>(?:\d{1,3}(?:,\d{3})*|\d+)?\.\d{2})$/;
-const BANK_ISLAM_TX_REGEX = /^(?<date>\d{1,2}\/\d{2}\/\d{2})\s+(?<header>.+?)\s+(?<amount>(?:\d{1,3}(?:,\d{3})*|\d+)\.\d{2})\s+(?<balance>(?:\d{1,3}(?:,\d{3})*|\d+)\.\d{2})$/;
+const DEFAULT_TX_REGEX = /^(\d{2}\/\d{2})\s+(.+?)\s+((?:\d{1,3}(?:,\d{3})*|\d+)?\.\d{2})([+-])\s+((?:\d{1,3}(?:,\d{3})*|\d+)?\.\d{2})$/;
+const BANK_ISLAM_TX_REGEX = /^(\d{1,2}\/\d{2}\/\d{2})\s+(.+?)\s+((?:\d{1,3}(?:,\d{3})*|\d+)\.\d{2})\s+((?:\d{1,3}(?:,\d{3})*|\d+)\.\d{2})$/;
 
 // Helper to convert string currency values to floats safely
 function cleanNumeric(val) {
     if (val === null || val === undefined || val === "") return null;
-    let clean = val.toString().replace(/,/g, "").trim();
+    let clean = val.toString().replace(/,/g, "").replace(/\(/g, "").replace(/\)/g, "").trim();
     let num = parseFloat(clean);
     return isNaN(num) ? null : num;
 }
@@ -42,15 +42,18 @@ function parsePage(pageText, startMarkers, footerKeywords, txRegex = DEFAULT_TX_
 
             if (current) rows.push(current);
 
-            if (match && match.groups) {
-                const amount = cleanNumeric(match.groups.amount.replace(/,/g, ""));
-                const balance = cleanNumeric(match.groups.balance.replace(/,/g, ""));
+            if (match) {
+                const amount = cleanNumeric(match[3].replace(/,/g, ""));
+                const balance = cleanNumeric(match[5].replace(/,/g, ""));
+                const sign = match[4];
+                const date = match[1];
+                const header = match[2];
 
                 current = {
-                    "Date": match.groups.date,
-                    "Bank Remark": match.groups.header,
-                    "Debit": amount || (match.groups.sign === "-" ? amount : ""),
-                    "Credit": amount || (match.groups.sign === "+" ? amount : ""),
+                    "Date": date,
+                    "Bank Remark": header,
+                    "Debit": sign === "-" ? amount : "",
+                    "Credit": sign === "+" ? amount : "",
                     "Balance": balance
                 };
             } else {
@@ -299,52 +302,10 @@ function parseCIMBPage(pageText, openingBal) {
     for (const row of sortedRows) {
         delete row.Amount;
         delete row.row_id;
-        delete row.Prev Bal;
+        delete row["Prev Bal"];
     }
 
     return sortedRows;
-}
-
-// Get statement first page text (simulated - actual PDF extraction happens in main app)
-function getStatementFirstPage(pdfPath) {
-    // This function would be implemented in the main app using pdf.js
-    // For now, we'll return an empty string and let the caller handle PDF extraction
-    return "";
-}
-
-// Convert bank - exact port of Python's convert_bank
-function convertBank(pdfText, config, bankName, fullText = "") {
-    let allRows = [];
-
-    // Split into pages (assuming pages are separated by form feeds or similar)
-    // In actual implementation, you'd receive page texts separately
-    const pages = pdfText.split(/\f|\n\f/);
-
-    for (const pageText of pages) {
-        if (!pageText.trim()) continue;
-
-        let pageRows = [];
-
-        if (bankName === "Bank Islam") {
-            pageRows = parseBankIslamPage(pageText);
-        } else if (bankName === "Public Bank") {
-            pageRows = parsePublicBankPage(pageText);
-        } else if (bankName === "CIMB") {
-            const openingBal = findCIMBOpeningBal(fullText || pageText);
-            pageRows = parseCIMBPage(pageText, openingBal);
-        } else {
-            pageRows = parsePage(
-                pageText,
-                config.startMarkers,
-                config.footerKeywords,
-                config.txRegex || DEFAULT_TX_REGEX
-            );
-        }
-
-        allRows = allRows.concat(pageRows);
-    }
-
-    return allRows;
 }
 
 // Bank configurations - exact port from Python
@@ -381,29 +342,47 @@ const BANK_CONFIGS = {
     }
 };
 
-// Main router function
+// Main router function - accepts either array of strings or single string
 function masterBankRouter(selectedBank, pageTexts, fullText = "") {
     const config = BANK_CONFIGS[selectedBank];
     if (!config) {
         throw new Error(`Bank "${selectedBank}" not supported yet`);
     }
 
-    // Combine all pages if they're provided as array
-    const combinedText = Array.isArray(pageTexts) ? pageTexts.join('\n') : pageTexts;
+    let allRows = [];
 
-    return convertBank(combinedText, config, selectedBank, fullText || combinedText);
+    // Handle if pageTexts is an array or a single string
+    const pages = Array.isArray(pageTexts) ? pageTexts : [pageTexts];
+
+    for (const pageText of pages) {
+        if (!pageText || !pageText.trim()) continue;
+
+        let pageRows = [];
+
+        if (selectedBank === "Bank Islam") {
+            pageRows = parseBankIslamPage(pageText);
+        } else if (selectedBank === "Public Bank") {
+            pageRows = parsePublicBankPage(pageText);
+        } else if (selectedBank === "CIMB") {
+            const openingBal = findCIMBOpeningBal(fullText || pageText);
+            pageRows = parseCIMBPage(pageText, openingBal);
+        } else {
+            pageRows = parsePage(
+                pageText,
+                config.startMarkers,
+                config.footerKeywords,
+                config.txRegex || DEFAULT_TX_REGEX
+            );
+        }
+
+        allRows = allRows.concat(pageRows);
+    }
+
+    return allRows;
 }
 
-// Export for use in other files
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        masterBankRouter,
-        BANK_CONFIGS,
-        parsePage,
-        parseBankIslamPage,
-        parsePublicBankPage,
-        parseCIMBPage,
-        convertBank,
-        cleanNumeric
-    };
+// Export for browser
+if (typeof window !== 'undefined') {
+    window.masterBankRouter = masterBankRouter;
+    window.BANK_CONFIGS = BANK_CONFIGS;
 }

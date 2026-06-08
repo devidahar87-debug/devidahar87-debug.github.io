@@ -81,6 +81,21 @@
             font-weight: bold;
             color: #4a5568;
         }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -127,115 +142,126 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
     async function processStatement() {
-        alert("Button was clicked successfully!");
-
         const fileInput = document.getElementById('pdfFile');
         const bank = document.getElementById('bankSelect').value;
         const format = document.querySelector('input[name="formatSelect"]:checked').value;
-        const status = document.getElementById('status');
+        const statusDiv = document.getElementById('status');
 
         if (fileInput.files.length === 0) {
-            status.innerHTML = "<span style='color: #e53e3e;'>Please upload a file.</span>";
+            statusDiv.innerHTML = "<span style='color: #e53e3e;'>❌ Please upload a PDF file.</span>";
             return;
         }
 
-        status.style.color = "#3182ce";
-        status.innerText = `Processing ${bank.toUpperCase()} statement...`;
+        // Show loading status
+        statusDiv.innerHTML = '<div class="loading"></div> Processing PDF...';
 
         const file = fileInput.files[0];
-        const fileReader = new FileReader();
 
-        fileReader.onload = async function () {
-            try {
-                const typedarray = new Uint8Array(this.result);
-                const pdf = await pdfjsLib.getDocument(typedarray).promise;
+        try {
+            // Read the PDF file
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
-                let allPagesLines = [];
-                let completeFullText = "";
+            const pageTexts = [];
+            let fullText = "";
 
-                // Extract raw string text across all pages
-                for (let i = 1; i <= pdf.numPages; i++) {
-                    const page = await pdf.getPage(i);
-                    const textContent = await page.getTextContent();
+            // Extract text from each page
+            for (let i = 1; i <= pdf.numPages; i++) {
+                statusDiv.innerHTML = `<div class="loading"></div> Processing page ${i} of ${pdf.numPages}...`;
 
-                    // Reconstruct text lines structurally by tracking vertical space
-                    let lastY = null;
-                    let currentLine = [];
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
 
-                    for (let item of textContent.items) {
-                        let currentY = item.transform[5];
-                        if (lastY !== null && Math.abs(currentY - lastY) > 4) {
-                            if (currentLine.length > 0) {
-                                allPagesLines.push(currentLine.join(" "));
-                            }
+                // Extract text items and group them into lines
+                const lines = [];
+                let lastY = null;
+                let currentLine = [];
+
+                for (const item of textContent.items) {
+                    const y = item.transform[5];
+
+                    if (lastY !== null && Math.abs(y - lastY) > 5) {
+                        if (currentLine.length > 0) {
+                            lines.push(currentLine.join(' '));
                             currentLine = [];
                         }
-                        if (item.str.trim()) {
-                            currentLine.push(item.str.trim());
-                            completeFullText += " " + item.str;
-                        }
-                        lastY = currentY;
                     }
-                    if (currentLine.length > 0) allPagesLines.push(currentLine.join(" "));
+
+                    if (item.str && item.str.trim()) {
+                        currentLine.push(item.str.trim());
+                        fullText += " " + item.str;
+                    }
+
+                    lastY = y;
                 }
 
-                // Send strings to our routed banks file
-                let parsedTransactions = masterBankRouter(bank, allPagesLines, completeFullText);
-
-                if (!parsedTransactions || parsedTransactions.length === 0) {
-                    status.innerHTML = "<span style='color: #e53e3e;'>No transactions found using configuration.</span>";
-                    return;
+                if (currentLine.length > 0) {
+                    lines.push(currentLine.join(' '));
                 }
 
-                // Build Table Arrays for SheetJS
-                let tableData = [["Date", "Bank Remark", "Debit", "Credit", "Balance"]];
-                parsedTransactions.forEach(tx => {
-                    tableData.push([
-                        tx.Date,
-                        tx["Bank Remark"], // Fixed: bracket notation for spaces in keys
-                        tx.Debit === 0 ? "" : tx.Debit,
-                        tx.Credit === 0 ? "" : tx.Credit,
-                        tx.Balance
-                    ]);
-                });
-
-                // Trigger chosen format download
-                if (format === 'xlsx') {
-                    exportToExcel(tableData, `${bank}_statement.xlsx`);
-                } else {
-                    exportToCSV(tableData, `${bank}_statement.csv`);
-                }
-
-                status.style.color = "#38a169";
-                status.innerText = "Success! Data processed and downloaded.";
-
-            } catch (error) {
-                console.error(error);
-                status.innerHTML = "<span style='color: #e53e3e;'>Error parsing PDF.</span>";
+                pageTexts.push(lines.join('\n'));
             }
-        };
 
-        fileReader.readAsArrayBuffer(file);
-    }
+            statusDiv.innerHTML = '<div class="loading"></div> Parsing transactions...';
 
-    // Helper: Generate Excel file using SheetJS
-    function exportToExcel(data, filename) {
-        const worksheet = XLSX.utils.aoa_to_sheet(data);
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, "Transactions");
-        XLSX.writeFile(workbook, filename);
-    }
+            // Call the master router
+            let parsedTransactions = masterBankRouter(bank, pageTexts, fullText);
 
-    // Helper: Generate clean CSV string
-    function exportToCSV(data, filename) {
-        let csvContent = data.map(row => row.map(val => `"${val}"`).join(",")).join("\n");
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.setAttribute("download", filename);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+            if (!parsedTransactions || parsedTransactions.length === 0) {
+                statusDiv.innerHTML = "<span style='color: #e53e3e;'>❌ No transactions found. The PDF format might not be supported for this bank.</span>";
+                return;
+            }
+
+            // Prepare data for export
+            const tableData = [["Date", "Bank Remark", "Debit", "Credit", "Balance"]];
+
+            parsedTransactions.forEach(tx => {
+                tableData.push([
+                    tx.Date || "",
+                    tx["Bank Remark"] || "",
+                    tx.Debit && tx.Debit !== 0 ? tx.Debit : "",
+                    tx.Credit && tx.Credit !== 0 ? tx.Credit : "",
+                    tx.Balance || ""
+                ]);
+            });
+
+            statusDiv.innerHTML = '<div class="loading"></div> Generating file...';
+
+            // Export based on selected format
+            const filename = `${bank.replace(/\s/g, '_')}_statement_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}`;
+
+            if (format === 'xlsx') {
+                const worksheet = XLSX.utils.aoa_to_sheet(tableData);
+                const workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(workbook, worksheet, "Transactions");
+                XLSX.writeFile(workbook, `${filename}.xlsx`);
+            } else {
+                let csvContent = tableData.map(row =>
+                    row.map(cell => {
+                        if (typeof cell === 'string' && (cell.includes(',') || cell.includes('"'))) {
+                            return `"${cell.replace(/"/g, '""')}"`;
+                        }
+                        return cell;
+                    }).join(',')
+                ).join('\n');
+
+                const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                link.href = url;
+                link.setAttribute('download', `${filename}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            }
+
+            statusDiv.innerHTML = `<span style='color: #38a169;'>✅ Success! Processed ${parsedTransactions.length} transactions. File downloaded.</span>`;
+
+        } catch (error) {
+            console.error('Error:', error);
+            statusDiv.innerHTML = `<span style='color: #e53e3e;'>❌ Error: ${error.message}</span>`;
+        }
     }
 </script>
 
