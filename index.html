@@ -144,13 +144,13 @@
         const fileReader = new FileReader();
 
 
-fileReader.onload = async function () {
-    try {
-        const typedarray = new Uint8Array(this.result);
-        const pdf = await pdfjsLib.getDocument(typedarray).promise;
+    fileReader.onload = async function () {
+        try {
+            const typedarray = new Uint8Array(this.result);
+            const pdf = await pdfjsLib.getDocument(typedarray).promise;
 
-        let allPagesLines = [];
-        let completeFullText = "";
+            let allPagesLines = [];
+            let completeFullText = "";
 
         // Extract raw string text across all pages
         for (let i = 1; i <= pdf.numPages; i++) {
