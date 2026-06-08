@@ -4,7 +4,7 @@ const BANK_ISLAM_TX_REGEX = /^(\d{1,2}\/\d{2}\/\d{2})\s+(.+?)\s+((?:\d{1,3}(?:,\
 
 // Helper to convert string currency values to floats safely (replaces pandas cleanup)
 function cleanNumeric(val) {
-    if (!val) return 0.0;
+    if (val === null || val === undefined || val === "") return 0.0;
     let clean = val.toString().replace(/,/g, "").replace(/\(/g, "").replace(/\)/g, "").trim();
     let num = parseFloat(clean);
     return isNaN(num) ? 0.0 : num;
@@ -12,18 +12,33 @@ function cleanNumeric(val) {
 
 const BankParsers = {
     // Port of parse_page() for Maybank, Agrobank, and AmBank
-    defaultParser: function(lines, footerKeywords) {
+    defaultParser: function(lines, startMarkers, footerKeywords, txRegex = DEFAULT_TX_REGEX) {
         let rows = [];
         let current = null;
 
-        for (let line of lines) {
-            line = line.trim();
+        // Find start index
+        let startIdx = -1;
+        for (let i = 0; i < lines.length; i++) {
+            let line = lines[i].trim();
+            if (startMarkers.some(m => line.startsWith(m))) {
+                startIdx = i + 1;
+                break;
+            }
+        }
+
+        if (startIdx === -1) return rows;
+
+        // Parse transactions
+        for (let i = startIdx; i < lines.length; i++) {
+            let line = lines[i].trim();
             if (!line) continue;
 
+            // Stop at footer
             if (footerKeywords.some(f => line.startsWith(f))) break;
 
+            // New transaction always starts with date
             if (/^\d{2}\/\d{2}/.test(line)) {
-                let match = line.match(DEFAULT_TX_REGEX);
+                let match = line.match(txRegex);
 
                 if (current) rows.push(current);
 
@@ -42,13 +57,17 @@ const BankParsers = {
                         "Balance": balance
                     };
                 } else {
+                    // fallback if regex fails
                     current = {
                         "Date": line.substring(0, 5),
                         "Bank Remark": line.substring(6),
-                        "Debit": "", "Credit": "", "Balance": ""
+                        "Debit": "",
+                        "Credit": "",
+                        "Balance": ""
                     };
                 }
             } else {
+                // multiline description
                 if (current) current["Bank Remark"] += " " + line;
             }
         }
@@ -75,10 +94,10 @@ const BankParsers = {
 
                 // Regex findall numbers
                 let parts = remaining.match(/(\d{1,3}(?:,\d{3})*(?:\.\d{2}))/g) || [];
-                let balance = parts.length >= 1 ? cleanNumeric(parts[parts.length - 1]) : 0.0;
+                let balance = parts.length >= 1 ? cleanNumeric(parts[parts.length - 1]) : null;
 
-                let debit = "";
-                let credit = "";
+                let debit = null;
+                let credit = null;
 
                 if (parts.length === 3) {
                     debit = cleanNumeric(parts[0]);
@@ -133,9 +152,9 @@ const BankParsers = {
                 if (skipKeywords.some(k => content.includes(k))) continue;
                 if (current) rows.push(current);
 
-                let debit = "";
-                let credit = "";
-                let balance = "";
+                let debit = null;
+                let credit = null;
+                let balance = null;
 
                 if (parts.length >= 2) {
                     balance = cleanNumeric(parts[parts.length - 1]);
@@ -146,7 +165,11 @@ const BankParsers = {
                     if (contentUpper.includes("CR CARD PYMT")) isCredit = false;
                     if (contentUpper.includes("DEP-ECP")) isCredit = true;
 
-                    if (isCredit) { credit = val; } else { debit = val; }
+                    if (isCredit) {
+                        credit = val;
+                    } else {
+                        debit = val;
+                    }
                 } else if (parts.length === 1) {
                     balance = cleanNumeric(parts[0]);
                 }
@@ -180,6 +203,7 @@ const BankParsers = {
 
         let rows = [];
         let current = null;
+        let rowCounter = 0;
         const cimbIgnore = ["Statement of Account", "Page / Halaman", "CONTINUE NEXT", "Opening Balance", "CLOSING BALANCE", "No of Withdrawal No of Deposits", "You can perform", "For more information", "Bil Pengeluaran Bil", "holidays or", "(RM) (RM)", "*** End of Statement / Penyata Tamat ***", "Important Notice", "Notis Penting", "GENERIC MESSAGES", "The Bank must be informed", "of any error", "irregularities or discrepancies", "www.cimbbank.com.my", "www.cimbislamic.com.my"];
 
         for (let line of lines) {
@@ -200,7 +224,9 @@ const BankParsers = {
                 let desc = content;
                 parts.forEach(p => desc = desc.replace(p, ""));
 
+                rowCounter++;
                 current = {
+                    "row_id": rowCounter,
                     "Date": dateStr,
                     "Bank Remark": desc.trim(),
                     "Amount": rowAmount,
@@ -234,6 +260,7 @@ const BankParsers = {
             // Cleanup temporary property so it matches output blueprint columns
             delete rows[i]["Amount"];
             delete rows[i]["Prev Bal"];
+            delete rows[i]["row_id"];
         }
         return rows;
     }
@@ -251,12 +278,26 @@ function masterBankRouter(selectedBank, textArray, completeTextString) {
         case "CIMB":
             return BankParsers.cimb(lines, completeTextString);
         case "Maybank":
-            return BankParsers.defaultParser(lines, ["ENDING BALANCE", "BAKI LEGAR", "LEDGER =", "PROTECTED BY PIDM"]);
+            return BankParsers.defaultParser(lines,
+                ["BEGINNING BALANCE", "ENTRY DATE VALUE DATE TRANSACTION DESCRIPTION TRANSACTION AMOUNT STATEMENT BALANCE"],
+                ["ENDING BALANCE", "BAKI LEGAR", "LEDGER =", "PROTECTED BY PIDM", "Perhatian / Note"],
+                DEFAULT_TX_REGEX);
         case "Agrobank":
-            return BankParsers.defaultParser(lines, ["CLOSING BALANCE", "BAKI LEGAR", "BANK PERTANIAN MALAYSIA BERHAD"]);
+            return BankParsers.defaultParser(lines,
+                ["BEGINNING BALANCE", "PREVIOUS STMT BAL", "DEBIT(-)/CREDIT"],
+                ["CLOSING BALANCE", "BAKI LEGAR", "LEDGER =", "PROTECTED BY PIDM", "Perhatian / Note", "BANK PERTANIAN MALAYSIA BERHAD"],
+                DEFAULT_TX_REGEX);
         case "AmBank":
-            return BankParsers.defaultParser(lines, ["CLOSING BALANCE", "BAKI LEGAR", "AmBank (M) Berhad"]);
+            return BankParsers.defaultParser(lines,
+                ["Balance b/f", "CHEQUE NO.", "NO. CEK"],
+                ["CLOSING BALANCE", "BAKI LEGAR", "LEDGER =", "PROTECTED BY PIDM", "Perhatian / Note", "1. PRIVACY NOTICE", "AmBank (M) Berhad"],
+                DEFAULT_TX_REGEX);
         default:
-            return BankParsers.defaultParser(lines, []);
+            return BankParsers.defaultParser(lines, [], [], DEFAULT_TX_REGEX);
     }
+}
+
+// Export for use in other files (if using modules)
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { masterBankRouter, BankParsers, cleanNumeric };
 }
