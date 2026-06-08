@@ -3,19 +3,148 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My PyCharm Website</title>
+    <title>Bank Statement to Spreadsheet Converter</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
         body {
-            font-family: Arial, sans-serif;
-            background-color: #f0f8ff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            color: #333;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
             text-align: center;
-            padding: 50px;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+        input[type="file"] {
+            margin: 20px 0;
+            padding: 10px;
+        }
+        button {
+            background-color: #2ecc71;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover {
+            background-color: #27ae60;
+        }
+        #status {
+            margin-top: 20px;
+            font-weight: bold;
+            color: #2980b9;
         }
     </style>
 </head>
 <body>
-    <h1>Hello from PyCharm!</h1>
-    <p>I am now editing my GitHub Pages site locally on my computer.</p>
-    <p>It takes time since this is the first one- again.</p>
+
+<div class="container">
+    <h2>Bank Statement to Spreadsheet Converter</h2>
+    <p>Upload your PDF bank statement to extract tabular text into a clean CSV spreadsheet file.</p>
+
+    <input type="file" id="pdfFile" accept=".pdf" /><br>
+    <button onclick="processPdf()">Convert & Download CSV</button>
+
+    <div id="status"></div>
+</div>
+
+<script>
+    // Tell PDF.js where the worker script is located
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
+    async function processPdf() {
+        const fileInput = document.getElementById('pdfFile');
+        const status = document.getElementById('status');
+
+        if (fileInput.files.length === 0) {
+            status.innerText = "Please select a PDF file first.";
+            return;
+        }
+
+        status.innerText = "Processing PDF... Please wait.";
+        const file = fileInput.files[0];
+        const fileReader = new FileReader();
+
+        fileReader.onload = async function () {
+            try {
+                const typedarray = new Uint8Array(this.result);
+                const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                let extractedRows = [];
+
+                // Loop through every page of the bank statement
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+
+                    let lastY = null;
+                    let currentRow = [];
+
+                    // Group text pieces by their vertical lines (rows)
+                    for (let item of textContent.items) {
+                        // item.transform[5] gives the Y-coordinate of the text on the page
+                        let currentY = item.transform[5];
+
+                        if (lastY !== null && Math.abs(currentY - lastY) > 5) {
+                            // New line detected! Save the completed row
+                            if (currentRow.length > 0) {
+                                extractedRows.push(currentRow.join(","));
+                            }
+                            currentRow = [];
+                        }
+
+                        // Clean commas out of the text so it doesn't break the CSV columns
+                        let cleanText = item.str.replace(/,/g, "").trim();
+                        if (cleanText) {
+                            currentRow.push(`"${cleanText}"`);
+                        }
+                        lastY = currentY;
+                    }
+                    if (currentRow.length > 0) {
+                        extractedRows.push(currentRow.join(","));
+                    }
+                }
+
+                if (extractedRows.length === 0) {
+                    status.innerText = "Could not find readable table text in this PDF.";
+                    return;
+                }
+
+                // Compile rows into a single CSV string
+                const csvContent = extractedRows.join("\n");
+                downloadCSV(csvContent, "extracted_statement.csv");
+                status.innerText = "Success! Your spreadsheet has downloaded.";
+
+            } catch (error) {
+                console.error(error);
+                status.innerText = "An error occurred while parsing the PDF.";
+            }
+        };
+
+        fileReader.readAsArrayBuffer(file);
+    }
+
+    // Function to force the browser to download the compiled CSV string
+    function downloadCSV(csvContent, fileName) {
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", fileName);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+</script>
+
 </body>
 </html>
