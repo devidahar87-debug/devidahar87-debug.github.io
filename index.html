@@ -7,6 +7,7 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="banks.js"></script>
 
     <style>
         body {
@@ -197,34 +198,6 @@
         };
 
         fileReader.readAsArrayBuffer(file);
-    }
-
-    // Custom filtering rules depending on which bank layout is selected
-    function parseRowByBank(rowText, bank) {
-        // Basic pattern matching to check if a row looks like a financial transaction
-        // Example: looks for dates like 10/24, Oct 24, 2026, etc.
-        const datePattern = /^\d{1,2}[\/\-]\d{1,2}/;
-
-        if (!datePattern.test(rowText)) return null; // Skip non-transaction lines (headers/footers)
-
-        // Clean up the text data
-        let cleanText = rowText.replace(/,/g, "");
-        let pieces = cleanText.split(/\s+/); // split by spaces
-
-        let date = pieces[0];
-        let amount = pieces[pieces.length - 1];
-        let description = pieces.slice(1, pieces.length - 1).join(" ");
-
-        // Custom tweaks per bank
-        if (bank === 'chase') {
-            // Chase often lists electronic transfers with distinct ending patterns
-            description = "[Chase] " + description;
-        } else if (bank === 'bofa') {
-            // Bank of America sometimes puts amounts before descriptions, or uses negative signs
-            if (rowText.includes("MINUS")) amount = "-" + amount;
-        }
-
-        return [date, description, amount];
     }
 
     // Helper: Generate Excel file using SheetJS
