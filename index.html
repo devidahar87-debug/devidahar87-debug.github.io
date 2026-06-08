@@ -127,7 +127,8 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
     async function processStatement() {
-        alert("Button was clicked successfully!"); // <-- Add this temporary test line
+        alert("Button was clicked successfully!");
+
         const fileInput = document.getElementById('pdfFile');
         const bank = document.getElementById('bankSelect').value;
         const format = document.querySelector('input[name="formatSelect"]:checked').value;
@@ -144,76 +145,75 @@
         const file = fileInput.files[0];
         const fileReader = new FileReader();
 
+        fileReader.onload = async function () {
+            try {
+                const typedarray = new Uint8Array(this.result);
+                const pdf = await pdfjsLib.getDocument(typedarray).promise;
 
-    fileReader.onload = async function () {
-        try {
-            const typedarray = new Uint8Array(this.result);
-            const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                let allPagesLines = [];
+                let completeFullText = "";
 
-            let allPagesLines = [];
-            let completeFullText = "";
+                // Extract raw string text across all pages
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
 
-        // Extract raw string text across all pages
-            for (let i = 1; i <= pdf.numPages; i++) {
-                const page = await pdf.getPage(i);
-                const textContent = await page.getTextContent();
+                    // Reconstruct text lines structurally by tracking vertical space
+                    let lastY = null;
+                    let currentLine = [];
 
-            // Reconstruct text lines structurally by tracking vertical space
-                let lastY = null;
-                let currentLine = [];
-
-            for (let item of textContent.items) {
-                let currentY = item.transform[5];
-                if (lastY !== null && Math.abs(currentY - lastY) > 4) {
-                    if (currentLine.length > 0) {
-                        allPagesLines.push(currentLine.join(" "));
+                    for (let item of textContent.items) {
+                        let currentY = item.transform[5];
+                        if (lastY !== null && Math.abs(currentY - lastY) > 4) {
+                            if (currentLine.length > 0) {
+                                allPagesLines.push(currentLine.join(" "));
+                            }
+                            currentLine = [];
+                        }
+                        if (item.str.trim()) {
+                            currentLine.push(item.str.trim());
+                            completeFullText += " " + item.str;
+                        }
+                        lastY = currentY;
                     }
-                    currentLine = [];
+                    if (currentLine.length > 0) allPagesLines.push(currentLine.join(" "));
                 }
-                if (item.str.trim()) {
-                    currentLine.push(item.str.trim());
-                    completeFullText += " " + item.str;
+
+                // Send strings to our routed banks file
+                let parsedTransactions = masterBankRouter(bank, allPagesLines, completeFullText);
+
+                if (!parsedTransactions || parsedTransactions.length === 0) {
+                    status.innerHTML = "<span style='color: #e53e3e;'>No transactions found using configuration.</span>";
+                    return;
                 }
-                lastY = currentY;
+
+                // Build Table Arrays for SheetJS
+                let tableData = [["Date", "Bank Remark", "Debit", "Credit", "Balance"]];
+                parsedTransactions.forEach(tx => {
+                    tableData.push([
+                        tx.Date,
+                        tx["Bank Remark"], // Fixed: bracket notation for spaces in keys
+                        tx.Debit === 0 ? "" : tx.Debit,
+                        tx.Credit === 0 ? "" : tx.Credit,
+                        tx.Balance
+                    ]);
+                });
+
+                // Trigger chosen format download
+                if (format === 'xlsx') {
+                    exportToExcel(tableData, `${bank}_statement.xlsx`);
+                } else {
+                    exportToCSV(tableData, `${bank}_statement.csv`);
+                }
+
+                status.style.color = "#38a169";
+                status.innerText = "Success! Data processed and downloaded.";
+
+            } catch (error) {
+                console.error(error);
+                status.innerHTML = "<span style='color: #e53e3e;'>Error parsing PDF.</span>";
             }
-            if (currentLine.length > 0) allPagesLines.push(currentLine.join(" "));
-        }
-
-        // Send strings to our routed banks file
-        let parsedTransactions = masterBankRouter(bank, allPagesLines, completeFullText);
-
-        if (!parsedTransactions || parsedTransactions.length === 0) {
-            status.innerHTML = "<span style='color: #e53e3e;'>No transactions found using configuration.</span>";
-            return;
-        }
-
-        // Build Table Arrays for SheetJS
-        let tableData = [["Date", "Bank Remark", "Debit", "Credit", "Balance"]];
-        parsedTransactions.forEach(tx => {
-            tableData.push([
-                tx.Date,
-                tx.Bank Remark,
-                tx.Debit === 0 ? "" : tx.Debit,
-                tx.Credit === 0 ? "" : tx.Credit,
-                tx.Balance
-            ]);
-        });
-
-        // Trigger chosen format download
-        if (format === 'xlsx') {
-            exportToExcel(tableData, `${bank}_statement.xlsx`);
-        } else {
-            exportToCSV(tableData, `${bank}_statement.csv`);
-        }
-
-        status.style.color = "#38a169";
-        status.innerText = "Success! Data processed and downloaded.";
-
-    } catch (error) {
-        console.error(error);
-        status.innerHTML = "<span style='color: #e53e3e;'>Error parsing PDF.</span>";
-    }
-};
+        };
 
         fileReader.readAsArrayBuffer(file);
     }
