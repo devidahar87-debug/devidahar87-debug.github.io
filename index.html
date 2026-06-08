@@ -97,11 +97,12 @@
     <div class="step">
         <label for="bankSelect">2. Choose Your Bank</label>
         <select id="bankSelect">
-            <option value="generic">Generic / Standard Layout</option>
+            <option value="Maybank">Maybank</option>
             <option value="Bank Islam">Bank Islam</option>
-            <option value="CIMB">CIMB Bank</option>
-            <option value="MBB">Maybank</option>
-            <option value="BMMB">Bank Muamalat Malaysia</option>
+            <option value="Public Bank">Public Bank</option>
+            <option value="CIMB">CIMB</option>
+            <option value="AmBank">AmBank</option>
+            <option value="Agrobank">Agrobank</option>
         </select>
     </div>
 
@@ -142,61 +143,76 @@
         const file = fileInput.files[0];
         const fileReader = new FileReader();
 
-        fileReader.onload = async function () {
-            try {
-                const typedarray = new Uint8Array(this.result);
-                const pdf = await pdfjsLib.getDocument(typedarray).promise;
 
-                // Structured data array: holding our rows as arrays [Date, Description, Amount]
-                let tableData = [["Date", "Description", "Amount"]]; // Header row
+fileReader.onload = async function () {
+    try {
+        const typedarray = new Uint8Array(this.result);
+        const pdf = await pdfjsLib.getDocument(typedarray).promise;
 
-                // Loop through PDF pages
-                for (let i = 1; i <= pdf.numPages; i++) {
-                    const page = await pdf.getPage(i);
-                    const textContent = await page.getTextContent();
+        let allPagesLines = [];
+        let completeFullText = "";
 
-                    let lastY = null;
-                    let currentRowItems = [];
+        // Extract raw string text across all pages
+        for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
 
-                    for (let item of textContent.items) {
-                        let currentY = item.transform[5];
+            // Reconstruct text lines structurally by tracking vertical space
+            let lastY = null;
+            let currentLine = [];
 
-                        if (lastY !== null && Math.abs(currentY - lastY) > 4) {
-                            if (currentRowItems.length > 0) {
-                                let rowText = currentRowItems.join(" ");
-                                let parsedRow = parseRowByBank(rowText, bank);
-                                if (parsedRow) tableData.push(parsedRow);
-                            }
-                            currentRowItems = [];
-                        }
-                        if (item.str.trim()) {
-                            currentRowItems.push(item.str.trim());
-                        }
-                        lastY = currentY;
+            for (let item of textContent.items) {
+                let currentY = item.transform[5];
+                if (lastY !== null && Math.abs(currentY - lastY) > 4) {
+                    if (currentLine.length > 0) {
+                        allPagesLines.push(currentLine.join(" "));
                     }
-                    // Handle the last row of the page
-                    if (currentRowItems.length > 0) {
-                        let rowText = currentRowItems.join(" ");
-                        let parsedRow = parseRowByBank(rowText, bank);
-                        if (parsedRow) tableData.push(parsedRow);
-                    }
+                    currentLine = [];
                 }
-
-                // Trigger the file download based on choice
-                if (format === 'xlsx') {
-                    exportToExcel(tableData, "Extract_Statement.xlsx");
-                } else {
-                    exportToCSV(tableData, "Extract_Statement.csv");
+                if (item.str.trim()) {
+                    currentLine.push(item.str.trim());
+                    completeFullText += " " + item.str;
                 }
-
-                status.style.color = "#38a169";
-                status.innerText = "Success! Check your downloads folder.";
-
-            } catch (error) {
-                console.error(error);
-                status.innerHTML = "<span style='color: #e53e3e;'>Error reading PDF structure.</span>";
+                lastY = currentY;
             }
-        };
+            if (currentLine.length > 0) allPagesLines.push(currentLine.join(" "));
+        }
+
+        // Send strings to our routed banks file
+        let parsedTransactions = masterBankRouter(bank, allPagesLines, completeFullText);
+
+        if (!parsedTransactions || parsedTransactions.length === 0) {
+            status.innerHTML = "<span style='color: #e53e3e;'>No transactions found using configuration.</span>";
+            return;
+        }
+
+        // Build Table Arrays for SheetJS
+        let tableData = [["Date", "Bank Remark", "Debit", "Credit", "Balance"]];
+        parsedTransactions.forEach(tx => {
+            tableData.push([
+                tx.Date,
+                tx.Bank Remark,
+                tx.Debit === 0 ? "" : tx.Debit,
+                tx.Credit === 0 ? "" : tx.Credit,
+                tx.Balance
+            ]);
+        });
+
+        // Trigger chosen format download
+        if (format === 'xlsx') {
+            exportToExcel(tableData, `${bank}_statement.xlsx`);
+        } else {
+            exportToCSV(tableData, `${bank}_statement.csv`);
+        }
+
+        status.style.color = "#38a169";
+        status.innerText = "Success! Data processed and downloaded.";
+
+    } catch (error) {
+        console.error(error);
+        status.innerHTML = "<span style='color: #e53e3e;'>Error parsing PDF.</span>";
+    }
+};
 
         fileReader.readAsArrayBuffer(file);
     }

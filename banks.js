@@ -1,70 +1,262 @@
-// This file handles the specific parsing rules for individual banks.
-// You can easily add more banks here in the future!
+// Regular Expressions migrated from your Python script
+const DEFAULT_TX_REGEX = /^(\d{2}\/\d{2})\s+(.+?)\s+((?:\d{1,3}(?:,\d{3})*|\d+)?\.\d{2})([+-])\s+((?:\d{1,3}(?:,\d{3})*|\d+)?\.\d{2})$/;
+const BANK_ISLAM_TX_REGEX = /^(\d{1,2}\/\d{2}\/\d{2})\s+(.+?)\s+((?:\d{1,3}(?:,\d{3})*|\d+)\.\d{2})\s+((?:\d{1,3}(?:,\d{3})*|\d+)\.\d{2})$/;
+
+// Helper to convert string currency values to floats safely (replaces pandas cleanup)
+function cleanNumeric(val) {
+    if (!val) return 0.0;
+    let clean = val.toString().replace(/,/g, "").replace(/\(/g, "").replace(/\)/g, "").trim();
+    let num = parseFloat(clean);
+    return isNaN(num) ? 0.0 : num;
+}
 
 const BankParsers = {
-    // 1. GENERIC PARSER
-    generic: function(rowText) {
-        const datePattern = /^\d{1,2}[\/\-]\d{1,2}/;
-        if (!datePattern.test(rowText)) return null;
+    // Port of parse_page() for Maybank, Agrobank, and AmBank
+    defaultParser: function(lines, footerKeywords) {
+        let rows = [];
+        let current = null;
 
-        let cleanText = rowText.replace(/,/g, "");
-        let pieces = cleanText.split(/\s+/);
+        for (let line of lines) {
+            line = line.trim();
+            if (!line) continue;
 
-        let date = pieces[0];
-        let amount = pieces[pieces.length - 1];
-        let description = pieces.slice(1, pieces.length - 1).join(" ");
+            if (footerKeywords.some(f => line.startsWith(f))) break;
 
-        return [date, description, amount];
+            if (/^\d{2}\/\d{2}/.test(line)) {
+                let match = line.match(DEFAULT_TX_REGEX);
+
+                if (current) rows.push(current);
+
+                if (match) {
+                    let date = match[1];
+                    let header = match[2];
+                    let amount = cleanNumeric(match[3]);
+                    let sign = match[4];
+                    let balance = cleanNumeric(match[5]);
+
+                    current = {
+                        "Date": date,
+                        "Bank Remark": header,
+                        "Debit": sign === "-" ? amount : "",
+                        "Credit": sign === "+" ? amount : "",
+                        "Balance": balance
+                    };
+                } else {
+                    current = {
+                        "Date": line.substring(0, 5),
+                        "Bank Remark": line.substring(6),
+                        "Debit": "", "Credit": "", "Balance": ""
+                    };
+                }
+            } else {
+                if (current) current["Bank Remark"] += " " + line;
+            }
+        }
+        if (current) rows.push(current);
+        return rows;
     },
 
-    // 2. CHASE BANK PARSER
-    chase: function(rowText) {
-        const datePattern = /^\d{2}\/\d{2}/; // Matches MM/DD
-        if (!datePattern.test(rowText)) return null;
+    // Port of parse_bank_islam_page()
+    bankIslam: function(lines) {
+        let rows = [];
+        let current = null;
+        const footerKeywords = ["Sekiranyaandamendapati", "RINGKASANAKAUN", "Sekiranya anda mendapati", "If you note any discrepancies", "Untuk pertanyaan", "RINGKASAN AKAUN", "SUMMARY OF ACCOUNT", "TOTAL DEBIT"];
 
-        let pieces = rowText.replace(/,/g, "").split(/\s+/);
-        let date = pieces[0];
-        let amount = pieces[pieces.length - 1];
-        let description = "[Chase] " + pieces.slice(1, pieces.length - 1).join(" ");
+        for (let line of lines) {
+            line = line.trim();
+            if (footerKeywords.some(f => line.includes(f))) break;
 
-        return [date, description, amount];
+            let dateMatch = line.match(/^(\d{1,2}\/\d{2}\/\d{2})/);
+            if (dateMatch) {
+                if (current) rows.push(current);
+
+                let dateStr = dateMatch[1];
+                let remaining = line.substring(dateStr.length).trim();
+
+                // Regex findall numbers
+                let parts = remaining.match(/(\d{1,3}(?:,\d{3})*(?:\.\d{2}))/g) || [];
+                let balance = parts.length >= 1 ? cleanNumeric(parts[parts.length - 1]) : 0.0;
+
+                let debit = "";
+                let credit = "";
+
+                if (parts.length === 3) {
+                    debit = cleanNumeric(parts[0]);
+                    credit = cleanNumeric(parts[1]);
+                } else if (parts.length === 2) {
+                    let val = cleanNumeric(parts[0]);
+                    let headerUpper = remaining.toUpperCase();
+                    if (["MB", "IB", "QR", "JOMPAY", "FPX"].some(k => headerUpper.includes(k))) {
+                        debit = val;
+                    } else {
+                        credit = val;
+                    }
+                }
+
+                let desc = remaining;
+                parts.forEach(p => desc = desc.replace(p, ""));
+
+                current = {
+                    "Date": dateStr,
+                    "Bank Remark": desc.trim(),
+                    "Debit": debit,
+                    "Credit": credit,
+                    "Balance": balance
+                };
+            } else if (current && !["TARIKH", "DATE", "BALANCE", "HALAMAN"].some(m => line.includes(m))) {
+                current["Bank Remark"] += " " + line;
+            }
+        }
+        if (current) rows.push(current);
+        return rows;
     },
 
-    // 3. BANK OF AMERICA PARSER
-    bofa: function(rowText) {
-        // Matches dates like "Jan 15" or "Oct 24"
-        const bofaDatePattern = /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}/i;
-        if (!bofaDatePattern.test(rowText)) return null;
+    // Port of parse_public_bank_page()
+    publicBank: function(lines) {
+        let rows = [];
+        let current = null;
+        let lastDate = "";
+        const skipKeywords = ["Balance B/F", "Balance C/F", "Balance From Last Statement", "TARIKH", "DATE", "URUS NIAGA", "Dilindungi oleh", "Protected by PIDM", "Mohon Kad Kredit", "RM setiap tahun.", "lebih, sila hubungi 03-2170 8000", "requirement as low as RM", "RM setiap", "Closing Balance In This Statement"];
 
-        let pieces = rowText.replace(/,/g, "").split(/\s+/);
-        let date = pieces[0] + " " + pieces[1];
-        let amount = pieces[pieces.length - 1];
-        let description = pieces.slice(2, pieces.length - 1).join(" ");
+        for (let line of lines) {
+            line = line.trim();
+            let dateMatch = line.match(/^(\d{2}\/\d{2})/);
+            let parts = line.match(/(\d{1,3}(?:,\d{3})*(?:\.\d{2}))/g) || [];
 
-        if (rowText.includes("MINUS")) amount = "-" + amount;
+            if (dateMatch || (parts.length >= 1 && !skipKeywords.some(k => line.includes(k)))) {
+                let content = line;
+                if (dateMatch) {
+                    lastDate = dateMatch[1];
+                    content = line.substring(lastDate.length).trim();
+                }
 
-        return [date, description, amount];
+                if (skipKeywords.some(k => content.includes(k))) continue;
+                if (current) rows.push(current);
+
+                let debit = "";
+                let credit = "";
+                let balance = "";
+
+                if (parts.length >= 2) {
+                    balance = cleanNumeric(parts[parts.length - 1]);
+                    let val = cleanNumeric(parts[parts.length - 2]);
+                    let contentUpper = content.toUpperCase();
+
+                    let isCredit = [" CR ", "CR ", "CR-", "KREDIT"].some(x => contentUpper.includes(x));
+                    if (contentUpper.includes("CR CARD PYMT")) isCredit = false;
+                    if (contentUpper.includes("DEP-ECP")) isCredit = true;
+
+                    if (isCredit) { credit = val; } else { debit = val; }
+                } else if (parts.length === 1) {
+                    balance = cleanNumeric(parts[0]);
+                }
+
+                let desc = content;
+                parts.forEach(p => desc = desc.replace(p, ""));
+
+                current = {
+                    "Date": lastDate,
+                    "Bank Remark": desc.trim(),
+                    "Debit": debit,
+                    "Credit": credit,
+                    "Balance": balance
+                };
+            } else if (current) {
+                if (!["Muka Surat", "Page", "Penyata ini", "BERHAD"].some(k => line.includes(k))) {
+                    current["Bank Remark"] += " " + line;
+                }
+            }
+        }
+        if (current) rows.push(current);
+        return rows;
     },
 
-    // 4. WELLS FARGO PARSER
-    wells: function(rowText) {
-        const datePattern = /^\d{2}\/\d{2}\/\d{4}/; // Matches MM/DD/YYYY
-        if (!datePattern.test(rowText)) return null;
+    // Port of parse_cimb_page()
+    cimb: function(lines, fullText) {
+        // Find Opening Balance exactly like find_cimb_opening_bal logic
+        let openingBal = 0.00;
+        let openMatch = fullText.match(/Opening\s+Balance\s+([\d,]+\.\d{2})/i);
+        if (openMatch) openingBal = cleanNumeric(openMatch[1]);
 
-        let pieces = rowText.replace(/,/g, "").split(/\s+/);
-        let date = pieces[0];
-        let amount = pieces[pieces.length - 1];
-        let description = pieces.slice(1, pieces.length - 1).join(" ");
+        let rows = [];
+        let current = null;
+        const cimbIgnore = ["Statement of Account", "Page / Halaman", "CONTINUE NEXT", "Opening Balance", "CLOSING BALANCE", "No of Withdrawal No of Deposits", "You can perform", "For more information", "Bil Pengeluaran Bil", "holidays or", "(RM) (RM)", "*** End of Statement / Penyata Tamat ***", "Important Notice", "Notis Penting", "GENERIC MESSAGES", "The Bank must be informed", "of any error", "irregularities or discrepancies", "www.cimbbank.com.my", "www.cimbislamic.com.my"];
 
-        return [date, description, amount];
+        for (let line of lines) {
+            line = line.trim();
+            if (cimbIgnore.some(k => line.includes(k)) || line.includes("CIMB ISLAMIC")) continue;
+
+            let dateMatch = line.match(/^(\d{2}\/\d{2}\/\d{4})/);
+            if (dateMatch) {
+                if (current) rows.push(current);
+
+                let dateStr = dateMatch[1];
+                let content = line.substring(dateStr.length).trim();
+                let parts = content.match(/(\d{1,3}(?:,\d{3})*(?:\.\d{2}))/g) || [];
+
+                let balance = parts.length > 0 ? cleanNumeric(parts[parts.length - 1]) : 0.0;
+                let rowAmount = parts.length >= 2 ? cleanNumeric(parts[parts.length - 2]) : 0.0;
+
+                let desc = content;
+                parts.forEach(p => desc = desc.replace(p, ""));
+
+                current = {
+                    "Date": dateStr,
+                    "Bank Remark": desc.trim(),
+                    "Amount": rowAmount,
+                    "Debit": 0.0,
+                    "Credit": 0.0,
+                    "Balance": balance,
+                    "Prev Bal": 0.0
+                };
+            } else if (current && !["Date", "Tarikh", "Description"].some(m => line.includes(m))) {
+                current["Bank Remark"] += " " + line;
+            }
+        }
+        if (current) rows.push(current);
+
+        // Process running balance calculations matching Python step 2
+        for (let i = 0; i < rows.length; i++) {
+            if (i === rows.length - 1) {
+                rows[i]["Prev Bal"] = openingBal;
+            } else {
+                rows[i]["Prev Bal"] = rows[i + 1]["Balance"];
+            }
+
+            let diff = Math.round((rows[i]["Balance"] - rows[i]["Prev Bal"]) * 100) / 100;
+            if (diff < 0) {
+                rows[i]["Debit"] = rows[i]["Amount"];
+                rows[i]["Credit"] = 0.0;
+            } else {
+                rows[i]["Credit"] = rows[i]["Amount"];
+                rows[i]["Debit"] = 0.0;
+            }
+            // Cleanup temporary property so it matches output blueprint columns
+            delete rows[i]["Amount"];
+            delete rows[i]["Prev Bal"];
+        }
+        return rows;
     }
 };
 
-// Global router function used by your main webpage
-function parseRowByBank(rowText, bankKey) {
-    // If the selected bank parser exists, use it. Otherwise, fallback to generic.
-    if (BankParsers[bankKey]) {
-        return BankParsers[bankKey](rowText);
+// Main Router exposed to index.html
+function masterBankRouter(selectedBank, textArray, completeTextString) {
+    let lines = textArray;
+
+    switch (selectedBank) {
+        case "Bank Islam":
+            return BankParsers.bankIslam(lines);
+        case "Public Bank":
+            return BankParsers.publicBank(lines);
+        case "CIMB":
+            return BankParsers.cimb(lines, completeTextString);
+        case "Maybank":
+            return BankParsers.defaultParser(lines, ["ENDING BALANCE", "BAKI LEGAR", "LEDGER =", "PROTECTED BY PIDM"]);
+        case "Agrobank":
+            return BankParsers.defaultParser(lines, ["CLOSING BALANCE", "BAKI LEGAR", "BANK PERTANIAN MALAYSIA BERHAD"]);
+        case "AmBank":
+            return BankParsers.defaultParser(lines, ["CLOSING BALANCE", "BAKI LEGAR", "AmBank (M) Berhad"]);
+        default:
+            return BankParsers.defaultParser(lines, []);
     }
-    return BankParsers.generic(rowText);
 }
