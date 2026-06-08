@@ -269,7 +269,7 @@ function parseCIMBPage(pageText, openingBal) {
                 "Debit": 0.0,
                 "Credit": 0.0,
                 "Balance": balance,
-                "Prev Bal": 0.0
+                "PrevBal": 0.0
             };
         } else if (current && !["Date", "Tarikh", "Description"].some(m => line.includes(m))) {
             current["Bank Remark"] += " " + line;
@@ -302,7 +302,7 @@ function parseCIMBPage(pageText, openingBal) {
     for (const row of sortedRows) {
         delete row.Amount;
         delete row.row_id;
-        delete row["Prev Bal"];
+        delete row.PrevBal;
     }
 
     return sortedRows;
@@ -343,10 +343,10 @@ const BANK_CONFIGS = {
 };
 
 // Main router function - accepts either array of strings or single string
-function masterBankRouter(selectedBank, pageTexts, fullText = "") {
+function masterBankRouter(selectedBank, pageTexts, fullText) {
     const config = BANK_CONFIGS[selectedBank];
     if (!config) {
-        throw new Error(`Bank "${selectedBank}" not supported yet`);
+        throw new Error('Bank "' + selectedBank + '" not supported yet');
     }
 
     let allRows = [];
@@ -354,7 +354,8 @@ function masterBankRouter(selectedBank, pageTexts, fullText = "") {
     // Handle if pageTexts is an array or a single string
     const pages = Array.isArray(pageTexts) ? pageTexts : [pageTexts];
 
-    for (const pageText of pages) {
+    for (let p = 0; p < pages.length; p++) {
+        const pageText = pages[p];
         if (!pageText || !pageText.trim()) continue;
 
         let pageRows = [];
@@ -381,8 +382,8 @@ function masterBankRouter(selectedBank, pageTexts, fullText = "") {
     return allRows;
 }
 
-// Export for browser
-if (typeof window !== 'undefined') {
-    window.masterBankRouter = masterBankRouter;
-    window.BANK_CONFIGS = BANK_CONFIGS;
-}
+// Make sure the function is available globally
+window.masterBankRouter = masterBankRouter;
+window.BANK_CONFIGS = BANK_CONFIGS;
+
+console.log("banks.js loaded successfully");

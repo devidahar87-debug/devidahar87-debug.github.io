@@ -147,6 +147,13 @@
         const format = document.querySelector('input[name="formatSelect"]:checked').value;
         const statusDiv = document.getElementById('status');
 
+        // Check if banks.js is loaded
+        if (typeof masterBankRouter === 'undefined') {
+            statusDiv.innerHTML = "<span style='color: #e53e3e;'>❌ Error: banks.js not loaded properly. Check console for errors.</span>";
+            console.error("masterBankRouter is not defined - banks.js may have errors");
+            return;
+        }
+
         if (fileInput.files.length === 0) {
             statusDiv.innerHTML = "<span style='color: #e53e3e;'>❌ Please upload a PDF file.</span>";
             return;
@@ -167,7 +174,7 @@
 
             // Extract text from each page
             for (let i = 1; i <= pdf.numPages; i++) {
-                statusDiv.innerHTML = `<div class="loading"></div> Processing page ${i} of ${pdf.numPages}...`;
+                statusDiv.innerHTML = '<div class="loading"></div> Processing page ' + i + ' of ' + pdf.numPages + '...';
 
                 const page = await pdf.getPage(i);
                 const textContent = await page.getTextContent();
@@ -215,53 +222,67 @@
             // Prepare data for export
             const tableData = [["Date", "Bank Remark", "Debit", "Credit", "Balance"]];
 
-            parsedTransactions.forEach(tx => {
+            for (let t = 0; t < parsedTransactions.length; t++) {
+                const tx = parsedTransactions[t];
                 tableData.push([
                     tx.Date || "",
                     tx["Bank Remark"] || "",
-                    tx.Debit && tx.Debit !== 0 ? tx.Debit : "",
-                    tx.Credit && tx.Credit !== 0 ? tx.Credit : "",
+                    (tx.Debit && tx.Debit !== 0) ? tx.Debit : "",
+                    (tx.Credit && tx.Credit !== 0) ? tx.Credit : "",
                     tx.Balance || ""
                 ]);
-            });
+            }
 
             statusDiv.innerHTML = '<div class="loading"></div> Generating file...';
 
             // Export based on selected format
-            const filename = `${bank.replace(/\s/g, '_')}_statement_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}`;
+            const filename = bank.replace(/\s/g, '_') + '_statement_' + new Date().toISOString().slice(0,19).replace(/:/g, '-');
 
             if (format === 'xlsx') {
                 const worksheet = XLSX.utils.aoa_to_sheet(tableData);
                 const workbook = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(workbook, worksheet, "Transactions");
-                XLSX.writeFile(workbook, `${filename}.xlsx`);
+                XLSX.writeFile(workbook, filename + '.xlsx');
             } else {
-                let csvContent = tableData.map(row =>
-                    row.map(cell => {
+                let csvContent = "";
+                for (let r = 0; r < tableData.length; r++) {
+                    const row = tableData[r];
+                    const csvRow = [];
+                    for (let c = 0; c < row.length; c++) {
+                        let cell = row[c];
                         if (typeof cell === 'string' && (cell.includes(',') || cell.includes('"'))) {
-                            return `"${cell.replace(/"/g, '""')}"`;
+                            cell = '"' + cell.replace(/"/g, '""') + '"';
                         }
-                        return cell;
-                    }).join(',')
-                ).join('\n');
+                        csvRow.push(cell);
+                    }
+                    csvContent += csvRow.join(',');
+                    if (r < tableData.length - 1) csvContent += '\n';
+                }
 
                 const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
                 const link = document.createElement('a');
                 const url = URL.createObjectURL(blob);
                 link.href = url;
-                link.setAttribute('download', `${filename}.csv`);
+                link.setAttribute('download', filename + '.csv');
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
                 URL.revokeObjectURL(url);
             }
 
-            statusDiv.innerHTML = `<span style='color: #38a169;'>✅ Success! Processed ${parsedTransactions.length} transactions. File downloaded.</span>`;
+            statusDiv.innerHTML = '<span style="color: #38a169;">✅ Success! Processed ' + parsedTransactions.length + ' transactions. File downloaded.</span>';
 
         } catch (error) {
             console.error('Error:', error);
-            statusDiv.innerHTML = `<span style='color: #e53e3e;'>❌ Error: ${error.message}</span>`;
+            statusDiv.innerHTML = '<span style="color: #e53e3e;">❌ Error: ' + error.message + '</span>';
         }
+    }
+
+    // Check if banks.js loaded correctly
+    if (typeof masterBankRouter !== 'undefined') {
+        console.log("banks.js loaded successfully, masterBankRouter is available");
+    } else {
+        console.error("WARNING: masterBankRouter is not defined after loading banks.js");
     }
 </script>
 
