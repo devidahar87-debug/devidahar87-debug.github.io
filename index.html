@@ -127,6 +127,7 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
     async function processStatement() {
+        alert("Button was clicked successfully!"); // <-- Add this temporary test line
         const fileInput = document.getElementById('pdfFile');
         const bank = document.getElementById('bankSelect').value;
         const format = document.querySelector('input[name="formatSelect"]:checked').value;
@@ -153,13 +154,13 @@
             let completeFullText = "";
 
         // Extract raw string text across all pages
-        for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i);
-            const textContent = await page.getTextContent();
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
 
             // Reconstruct text lines structurally by tracking vertical space
-            let lastY = null;
-            let currentLine = [];
+                let lastY = null;
+                let currentLine = [];
 
             for (let item of textContent.items) {
                 let currentY = item.transform[5];
