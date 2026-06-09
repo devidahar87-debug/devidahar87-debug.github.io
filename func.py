@@ -191,6 +191,7 @@ def process_pdf_page(page_text: str, bank_name: str, page_num: int):
         # Fallback tracking safely for non-supported banks
         result = convert_bank(page_text, bank_name)
     return json.dumps(result)
+
 def parse_public_bank_page(page_text):
     rows = []
     lines = [l.strip() for l in page_text.splitlines() if l.strip()]

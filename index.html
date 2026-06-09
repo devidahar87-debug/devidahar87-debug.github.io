@@ -369,7 +369,7 @@
             return fullText;
         }
 
-        async function convertPDF() {
+async function convertPDF() {
             const fileInput = document.getElementById('pdfFile');
             const bank = document.getElementById('bankSelect').value;
             const convertBtn = document.getElementById('convertBtn');
@@ -402,38 +402,70 @@
             document.getElementById('downloadButtons').style.display = 'none';
 
             try {
-                progressBar.value = 20;
+                progressBar.value = 10;
                 progressText.textContent = 'Reading PDF file...';
                 const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
-                progressBar.value = 50;
-                progressText.textContent = 'Extracting and restructuring text...';
-                const pdfText = await extractTextFromPDF(arrayBuffer);
+                let aggregatedTransactions = [];
+                const totalPages = pdf.numPages;
 
-                progressBar.value = 75;
-                progressText.textContent = 'Parsing transactions with Python...';
+                // Loop page by page to cleanly track page context boundaries
+                for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+                    progressBar.value = 10 + Math.round((pageNum / totalPages) * 70);
+                    progressText.textContent = `Processing Page ${pageNum} of ${totalPages}...`;
 
-                const processFunc = pyodide.globals.get('process_pdf');
-                const resultJson = processFunc(pdfText, bank);
-                const transactions = JSON.parse(resultJson);
+                    const page = await pdf.getPage(pageNum);
+                    const textContent = await page.getTextContent();
+
+                    // Reconstruct structural line layouts for the current page
+                    let lineMap = {};
+                    for (const item of textContent.items) {
+                        if (!item.str.trim()) continue;
+                        let yKey = Math.round(item.transform[5] * 10) / 10;
+                        let foundKey = Object.keys(lineMap).find(k => Math.abs(parseFloat(k) - yKey) < 3.5);
+                        if (foundKey) {
+                            lineMap[foundKey].push(item);
+                        } else {
+                            lineMap[yKey] = [item];
+                        }
+                    }
+
+                    let sortedY = Object.keys(lineMap).sort((a, b) => parseFloat(b) - parseFloat(a));
+                    let pageText = '';
+                    for (let y of sortedY) {
+                        let items = lineMap[y].sort((a, b) => a.transform[4] - b.transform[4]);
+                        let lineStr = items.map(it => it.str).join(' ');
+                        pageText += lineStr + '\n';
+                    }
+
+                    // Call the newly mapped per-page processing script
+                    const processPageFunc = pyodide.globals.get('process_pdf_page');
+                    const pageResultJson = processPageFunc(pageText, bank, pageNum);
+                    const pageTransactions = JSON.parse(pageResultJson);
+
+                    if (pageTransactions && pageTransactions.length > 0) {
+                        aggregatedTransactions = aggregatedTransactions.concat(pageTransactions);
+                    }
+                }
 
                 progressBar.value = 100;
                 progressText.textContent = 'Complete!';
 
-                if (!transactions || transactions.length === 0) {
-                    throw new Error('No transaction matches found. Ensure you selected the correct corresponding bank matching your statement layout.');
+                if (aggregatedTransactions.length === 0) {
+                    throw new Error('No transaction matches found. Ensure you selected the correct bank matching your statement template layout.');
                 }
 
-                currentData = transactions;
+                currentData = aggregatedTransactions;
 
                 statsDiv.style.display = 'block';
                 statsDiv.innerHTML = `
-                    ✅ Successfully processed <strong>${transactions.length}</strong> transactions<br>
-                    📅 From ${transactions[0]?.Date || 'N/A'} to ${transactions[transactions.length-1]?.Date || 'N/A'}
+                    ✅ Successfully processed <strong>${aggregatedTransactions.length}</strong> transactions<br>
+                    📅 From ${aggregatedTransactions[0]?.Date || 'N/A'} to ${aggregatedTransactions[aggregatedTransactions.length-1]?.Date || 'N/A'}
                 `;
 
-                displayTable(transactions);
-                showStatus(`✅ Success! Processed ${transactions.length} transactions`, 'success');
+                displayTable(aggregatedTransactions);
+                showStatus(`✅ Success! Processed ${aggregatedTransactions.length} transactions`, 'success');
                 document.getElementById('downloadButtons').style.display = 'flex';
 
             } catch (error) {
@@ -447,7 +479,6 @@
                 }, 1000);
             }
         }
-
         function displayTable(data) {
             const tableContainer = document.getElementById('tableContainer');
             const columns = ['Date', 'Bank Remark', 'Debit', 'Credit', 'Balance'];
