@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bank Statement Converter - Python in Browser</title>
-    <!-- Load PDF.js from a reliable CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
     <style>
         * {
             margin: 0;
@@ -288,367 +288,31 @@
         let currentData = [];
         let currentBank = '';
 
-        // Python code as a string (your original working code)
-        const pythonCode = `
-import re
-import json
-from typing import List, Dict, Any
-
-DEFAULT_TX_REGEX = re.compile(
-    r"^(?P<date>\\d{2}/\\d{2})\\s+"
-    r"(?P<header>.+?)\\s+"
-    r"(?P<amount>(?:\\d{1,3}(?:,\\d{3})*|\\d+)?\\.\\d{2})"
-    r"(?P<sign>[+-])\\s+"
-    r"(?P<balance>(?:\\d{1,3}(?:,\\d{3})*|\\d+)?\\.\\d{2})$"
-)
-
-BANK_ISLAM_TX_REGEX = re.compile(
-    r"^(?P<date>\\d{1,2}/\\d{2}/\\d{2})\\s+"
-    r"(?P<header>.+?)\\s+"
-    r"(?P<amount>(?:\\d{1,3}(?:,\\d{3})*|\\d+)\\.\\d{2})\\s+"
-    r"(?P<balance>(?:\\d{1,3}(?:,\\d{3})*|\\d+)\\.\\d{2})$"
-)
-
-def parse_page(page_text, start_markers, footer_keywords, tx_regex=DEFAULT_TX_REGEX):
-    rows = []
-    current = None
-    lines = page_text.splitlines()
-
-    start_idx = None
-    for i, line in enumerate(lines):
-        line = line.strip()
-        if any(line.startswith(m) for m in start_markers):
-            start_idx = i + 1
-            break
-
-    if start_idx is None:
-        return rows
-
-    for line in lines[start_idx:]:
-        line = line.strip()
-        if not line:
-            continue
-
-        if any(line.startswith(f) for f in footer_keywords):
-            break
-
-        if re.match(r"^\\d{2}/\\d{2}", line):
-            match = tx_regex.match(line)
-
-            if current:
-                rows.append(current)
-
-            if match:
-                amount = float(match.group("amount").replace(",", ""))
-                balance = float(match.group("balance").replace(",", ""))
-
-                current = {
-                    "Date": match.group("date"),
-                    "Bank Remark": match.group("header"),
-                    "Debit": amount if match.group("sign") == "-" else "",
-                    "Credit": amount if match.group("sign") == "+" else "",
-                    "Balance": balance
-                }
-            else:
-                current = {
-                    "Date": line[:5],
-                    "Bank Remark": line[6:],
-                    "Debit": "",
-                    "Credit": "",
-                    "Balance": ""
-                }
-        else:
-            if current:
-                current["Bank Remark"] += " " + line
-
-    if current:
-        rows.append(current)
-
-    return rows
-
-def parse_bank_islam_page(page_text):
-    rows = []
-    lines = [l.strip() for l in page_text.splitlines() if l.strip()]
-
-    BANK_ISLAM_FOOTER_KEYWORDS = [
-        "Sekiranyaandamendapati",
-        "RINGKASANAKAUN",
-        "Sekiranya anda mendapati",
-        "If you note any discrepancies",
-        "Untuk pertanyaan",
-        "RINGKASAN AKAUN",
-        "SUMMARY OF ACCOUNT",
-        "TOTAL DEBIT"
-    ]
-
-    current = None
-
-    def clean_numeric(value):
-        if not value:
-            return None
-        try:
-            return float(value.replace(",", ""))
-        except ValueError:
-            return None
-
-    for line in lines:
-        if any(f in line for f in BANK_ISLAM_FOOTER_KEYWORDS):
-            break
-
-        date_match = re.match(r"^(\\d{1,2}/\\d{2}/\\d{2})", line)
-
-        if date_match:
-            if current:
-                rows.append(current)
-
-            date_str = date_match.group(1)
-            remaining = line[len(date_str):].strip()
-
-            parts = re.findall(r"(\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2}))", remaining)
-
-            balance = clean_numeric(parts[-1]) if len(parts) >= 1 else None
-            debit = None
-            credit = None
-
-            if len(parts) == 3:
-                debit = clean_numeric(parts[0])
-                credit = clean_numeric(parts[1])
-            elif len(parts) == 2:
-                val = clean_numeric(parts[0])
-                header_upper = remaining.upper()
-                if any(k in header_upper for k in ["MB", "IB", "QR", "JOMPAY", "FPX"]):
-                    debit = val
-                else:
-                    credit = val
-
-            desc = remaining
-            for p in parts:
-                desc = desc.replace(p, "").strip()
-
-            current = {
-                "Date": date_str,
-                "Bank Remark": desc,
-                "Debit": debit if debit else "",
-                "Credit": credit if credit else "",
-                "Balance": balance
-            }
-
-        elif current and not any(m in line for m in ["TARIKH", "DATE", "BALANCE", "HALAMAN"]):
-            current["Bank Remark"] += " " + line
-
-    if current:
-        rows.append(current)
-
-    return rows
-
-def parse_public_bank_page(page_text):
-    rows = []
-    lines = [l.strip() for l in page_text.splitlines() if l.strip()]
-
-    SKIP_KEYWORDS = ["Balance B/F", "Balance C/F", "Balance From Last Statement",
-                     "TARIKH", "DATE", "URUS NIAGA", "Dilindungi oleh", "Protected by PIDM"]
-
-    current = None
-    last_date = ""
-
-    def clean_val(val):
-        if not val: return None
-        try:
-            return float(val.replace(",", ""))
-        except ValueError:
-            return None
-
-    for line in lines:
-        date_match = re.match(r"^(\\d{2}/\\d{2})", line)
-        parts = re.findall(r"(\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2}))", line)
-
-        if date_match or (len(parts) >= 1 and not any(k in line for k in SKIP_KEYWORDS)):
-            if date_match:
-                last_date = date_match.group(1)
-                content = line[len(last_date):].strip()
-            else:
-                content = line
-
-            if any(k in content for k in SKIP_KEYWORDS):
-                continue
-
-            if current:
-                rows.append(current)
-
-            debit = None
-            credit = None
-            balance = None
-
-            if len(parts) >= 2:
-                balance = clean_val(parts[-1])
-                val = clean_val(parts[-2])
-                content_upper = content.upper()
-
-                is_credit = any(x in content_upper for x in [" CR ", "CR ", "CR-", "KREDIT"])
-                if "CR CARD PYMT" in content_upper:
-                    is_credit = False
-                if "DEP-ECP" in content_upper:
-                    is_credit = True
-
-                if is_credit:
-                    credit = val
-                else:
-                    debit = val
-
-            elif len(parts) == 1:
-                balance = clean_val(parts[0])
-
-            desc = content
-            for p in parts:
-                desc = desc.replace(p, "").strip()
-
-            current = {
-                "Date": last_date,
-                "Bank Remark": desc,
-                "Debit": debit if debit else "",
-                "Credit": credit if credit else "",
-                "Balance": balance
-            }
-
-        elif current:
-            if not any(k in line for k in ["Muka Surat", "Page", "Penyata ini", "BERHAD"]):
-                current["Bank Remark"] += " " + line
-
-    if current:
-        rows.append(current)
-
-    return rows
-
-def find_cimb_opening_bal(statement_text):
-    match = re.search(r'Opening Balance\\s+([\\d,]+\\.\\d{2})', statement_text, re.IGNORECASE)
-    if match:
-        return float(match.group(1).replace(",", ""))
-    return 0.00
-
-def parse_cimb_page(page_text, opening_bal):
-    rows = []
-    lines = [l.strip() for l in page_text.splitlines() if l.strip()]
-
-    CIMB_IGNORE = ["Statement of Account", "Page / Halaman", "CONTINUE NEXT",
-                   "Opening Balance", "CLOSING BALANCE", "No of Withdrawal No of Deposits"]
-
-    def clean_val(val):
-        if not val: return 0.0
-        try:
-            return float(val.replace(",", "").strip())
-        except:
-            return 0.0
-
-    current = None
-    row_counter = 0
-
-    for line in lines:
-        if any(k in line for k in CIMB_IGNORE) or "CIMB ISLAMIC" in line:
-            continue
-
-        date_match = re.match(r"^(\\d{2}/\\d{2}/\\d{4})", line)
-        if date_match:
-            if current:
-                rows.append(current)
-
-            date_str = date_match.group(1)
-            content = line[len(date_str):].strip()
-            parts = re.findall(r"(\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2}))", content)
-
-            balance = clean_val(parts[-1]) if parts else 0.0
-            row_amount = clean_val(parts[-2]) if len(parts) >= 2 else 0.0
-
-            desc = content
-            for p in parts:
-                desc = desc.replace(p, "").strip()
-
-            row_counter += 1
-            current = {
-                "Date": date_str,
-                "Bank Remark": desc,
-                "Amount": row_amount,
-                "Debit": 0.0,
-                "Credit": 0.0,
-                "Balance": balance
-            }
-        elif current and not any(m in line for m in ["Date", "Tarikh", "Description"]):
-            current["Bank Remark"] += " " + line
-
-    if current:
-        rows.append(current)
-
-    processed_data = []
-    prev_row_bal = opening_bal
-
-    for row in rows:
-        diff = round(row['Balance'] - prev_row_bal, 2)
-        if diff < 0:
-            row['Debit'] = abs(diff)
-            row['Credit'] = 0.0
-        else:
-            row['Credit'] = diff
-            row['Debit'] = 0.0
-        prev_row_bal = row['Balance']
-        if 'Amount' in row:
-            del row['Amount']
-        processed_data.append(row)
-
-    return processed_data
-
-def convert_bank(pdf_text, bank_name):
-    all_rows = []
-
-    if bank_name == "Bank Islam":
-        page_rows = parse_bank_islam_page(pdf_text)
-    elif bank_name == "Public Bank":
-        page_rows = parse_public_bank_page(pdf_text)
-    elif bank_name == "CIMB":
-        opening_bal = find_cimb_opening_bal(pdf_text)
-        page_rows = parse_cimb_page(pdf_text, opening_bal)
-    elif bank_name == "Maybank":
-        page_rows = parse_page(pdf_text,
-            ["BEGINNING BALANCE", "ENTRY DATE VALUE DATE TRANSACTION DESCRIPTION TRANSACTION AMOUNT STATEMENT BALANCE"],
-            ["ENDING BALANCE", "BAKI LEGAR", "LEDGER =", "PROTECTED BY PIDM"],
-            DEFAULT_TX_REGEX)
-    elif bank_name == "Agrobank":
-        page_rows = parse_page(pdf_text,
-            ["BEGINNING BALANCE", "PREVIOUS STMT BAL", "DEBIT(-)/CREDIT"],
-            ["CLOSING BALANCE", "BAKI LEGAR", "PROTECTED BY PIDM", "BANK PERTANIAN MALAYSIA BERHAD"],
-            DEFAULT_TX_REGEX)
-    elif bank_name == "AmBank":
-        page_rows = parse_page(pdf_text,
-            ["Balance b/f", "CHEQUE NO.", "NO. CEK"],
-            ["CLOSING BALANCE", "BAKI LEGAR", "PROTECTED BY PIDM", "AmBank (M) Berhad"],
-            DEFAULT_TX_REGEX)
-    else:
-        page_rows = []
-
-    all_rows.extend(page_rows)
-    return all_rows
-
-def process_pdf(pdf_content: str, bank_name: str):
-    """Main function to be called from JavaScript"""
-    result = convert_bank(pdf_content, bank_name)
-    # Convert to JSON-serializable format
-    return json.dumps(result)
-`;
-
-        // Initialize Pyodide
+        // Initialize Pyodide and fetch external Python script
         async function initPyodide() {
             const initStatus = document.getElementById('initStatus');
             const convertBtn = document.getElementById('convertBtn');
 
             try {
-                initStatus.innerHTML = '⏳ Loading Python runtime (this may take 10-15 seconds on first load)...';
+                initStatus.innerHTML = '⏳ Loading Python runtime (this may take 10-15 seconds)...';
 
-                // Load Pyodide
+                if (typeof loadPyodide === 'undefined') {
+                    throw new Error('Pyodide library not loaded');
+                }
+
                 pyodide = await loadPyodide({
                     indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.1/full/",
                 });
 
-                initStatus.innerHTML = '📦 Setting up parsers...';
+                initStatus.innerHTML = '📥 Fetching parsing scripts (func.py)...';
+                // Fetch the func.py file dynamically from the same server directory path
+                const response = await fetch('./func.py');
+                if (!response.ok) {
+                    throw new Error(`Could not load func.py file. Status: ${response.status}`);
+                }
+                const pythonCode = await response.text();
 
-                // Run the Python code
+                initStatus.innerHTML = '📦 Setting up parsers...';
                 await pyodide.runPythonAsync(pythonCode);
 
                 initStatus.innerHTML = '✅ Ready! You can now convert PDF statements.';
@@ -662,13 +326,13 @@ def process_pdf(pdf_content: str, bank_name: str):
 
             } catch (error) {
                 console.error('Failed to initialize Pyodide:', error);
-                initStatus.innerHTML = `❌ Failed to load: ${error.message}. Please refresh the page and try again.`;
+                initStatus.innerHTML = `❌ Failed to load: ${error.message}. Ensure func.py is uploaded alongside index.html.`;
                 initStatus.style.background = '#f8d7da';
                 initStatus.style.borderLeftColor = '#dc3545';
             }
         }
 
-        // Extract text from PDF using pdf.js
+        // Extract layout structured textual sequences from PDF items
         async function extractTextFromPDF(arrayBuffer) {
             const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
             let fullText = '';
@@ -676,7 +340,29 @@ def process_pdf(pdf_content: str, bank_name: str):
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
                 const textContent = await page.getTextContent();
-                const pageText = textContent.items.map(item => item.str).join(' ');
+
+                let lineMap = {};
+                for (const item of textContent.items) {
+                    if (!item.str.trim()) continue;
+                    let yKey = Math.round(item.transform[5] * 10) / 10;
+
+                    let foundKey = Object.keys(lineMap).find(k => Math.abs(parseFloat(k) - yKey) < 3.5);
+                    if (foundKey) {
+                        lineMap[foundKey].push(item);
+                    } else {
+                        lineMap[yKey] = [item];
+                    }
+                }
+
+                let sortedY = Object.keys(lineMap).sort((a, b) => parseFloat(b) - parseFloat(a));
+                let pageText = '';
+
+                for (let y of sortedY) {
+                    let items = lineMap[y].sort((a, b) => a.transform[4] - b.transform[4]);
+                    let lineStr = items.map(it => it.str).join(' ');
+                    pageText += lineStr + '\n';
+                }
+
                 fullText += pageText + '\n';
             }
 
@@ -707,7 +393,6 @@ def process_pdf(pdf_content: str, bank_name: str):
             currentBank = bank;
             const file = fileInput.files[0];
 
-            // Show loading
             convertBtn.disabled = true;
             convertBtn.innerHTML = '<span class="loading"></span> Processing...';
             showStatus('Processing PDF file...', 'info');
@@ -719,43 +404,35 @@ def process_pdf(pdf_content: str, bank_name: str):
             try {
                 progressBar.value = 20;
                 progressText.textContent = 'Reading PDF file...';
-
                 const arrayBuffer = await file.arrayBuffer();
 
                 progressBar.value = 50;
-                progressText.textContent = 'Extracting text from PDF...';
-
+                progressText.textContent = 'Extracting and restructuring text...';
                 const pdfText = await extractTextFromPDF(arrayBuffer);
 
-                progressBar.value = 70;
+                progressBar.value = 75;
                 progressText.textContent = 'Parsing transactions with Python...';
 
-                // Call Python function
                 const processFunc = pyodide.globals.get('process_pdf');
                 const resultJson = processFunc(pdfText, bank);
-
-                // Parse the JSON result
                 const transactions = JSON.parse(resultJson);
 
                 progressBar.value = 100;
                 progressText.textContent = 'Complete!';
 
                 if (!transactions || transactions.length === 0) {
-                    throw new Error('No transactions found in the PDF');
+                    throw new Error('No transaction matches found. Ensure you selected the correct corresponding bank matching your statement layout.');
                 }
 
                 currentData = transactions;
 
-                // Display stats
                 statsDiv.style.display = 'block';
                 statsDiv.innerHTML = `
                     ✅ Successfully processed <strong>${transactions.length}</strong> transactions<br>
                     📅 From ${transactions[0]?.Date || 'N/A'} to ${transactions[transactions.length-1]?.Date || 'N/A'}
                 `;
 
-                // Display table
                 displayTable(transactions);
-
                 showStatus(`✅ Success! Processed ${transactions.length} transactions`, 'success');
                 document.getElementById('downloadButtons').style.display = 'flex';
 
@@ -781,16 +458,15 @@ def process_pdf(pdf_content: str, bank_name: str):
             });
             html += '</tr></thead><tbody>';
 
-            // Show first 100 rows
             const displayData = data.slice(0, 100);
             for (let row of displayData) {
                 html += '<tr>';
                 columns.forEach(col => {
                     let value = row[col];
                     if (value === null || value === undefined || value === '') value = '-';
-                    if (col === 'Debit' && value && value !== '-') value = `RM ${parseFloat(value).toFixed(2)}`;
-                    if (col === 'Credit' && value && value !== '-') value = `RM ${parseFloat(value).toFixed(2)}`;
-                    if (col === 'Balance' && value && value !== '-') value = `RM ${parseFloat(value).toFixed(2)}`;
+                    if ((col === 'Debit' || col === 'Credit' || col === 'Balance') && value && value !== '-') {
+                        value = `RM ${parseFloat(value).toFixed(2)}`;
+                    }
                     html += `<td>${value}</td>`;
                 });
                 html += '</tr>';
@@ -825,8 +501,6 @@ def process_pdf(pdf_content: str, bank_name: str):
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, 'Transactions');
             XLSX.writeFile(wb, `${currentBank.replace(/\s/g, '_')}_statement.xlsx`);
-
-            showStatus('✅ Excel file downloaded successfully!', 'success');
         }
 
         function downloadCSV() {
@@ -846,32 +520,17 @@ def process_pdf(pdf_content: str, bank_name: str):
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
-
-            showStatus('✅ CSV file downloaded successfully!', 'success');
         }
 
         function showStatus(message, type) {
             const statusDiv = document.getElementById('status');
             statusDiv.textContent = message;
             statusDiv.className = `status ${type}`;
-
-            setTimeout(() => {
-                if (statusDiv.className === `status ${type}`) {
-                    statusDiv.style.display = 'none';
-                    setTimeout(() => {
-                        statusDiv.style.display = 'block';
-                    }, 0);
-                }
-            }, 5000);
         }
 
-        // Wait for PDF.js to load before initializing Pyodide
         window.addEventListener('load', () => {
-            // Check if pdfjsLib is available
             if (typeof pdfjsLib === 'undefined') {
-                document.getElementById('initStatus').innerHTML = '❌ PDF.js library failed to load. Please check your internet connection and refresh the page.';
-                document.getElementById('initStatus').style.background = '#f8d7da';
-                document.getElementById('initStatus').style.borderLeftColor = '#dc3545';
+                document.getElementById('initStatus').innerHTML = '❌ PDF.js library failed to load. Please check network connectivity.';
             } else {
                 initPyodide();
             }
