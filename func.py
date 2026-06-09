@@ -104,7 +104,8 @@ def parse_bank_islam_page(page_text):
         "CAWANGAN",
         "BRANCH",
         "PENYATA AKAUN",
-        "ACCOUNT STATEMENT"
+        "ACCOUNT STATEMENT",
+        "penyata ini akan dianggap betul. Jabatan Khidmat Pelanggan (Customer Care Department), Tingkat 17, Menara Bank Islam, No 22, Jalan Perak, 50450 Kuala Lumpur"
     ]
 
     current = None
