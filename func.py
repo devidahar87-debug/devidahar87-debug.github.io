@@ -163,6 +163,11 @@ def parse_bank_islam_page(page_text):
             for p in parts:
                 desc = desc.replace(p, "").strip()
 
+            desc_parts = re.split(r'\s{2,}', desc)
+            if desc_parts:
+                desc = desc_parts[0].strip()
+
+
             current = {
                 "Date": date_str,
                 "Bank Remark": desc,
