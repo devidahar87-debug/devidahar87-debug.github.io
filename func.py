@@ -171,7 +171,7 @@ def parse_bank_islam_page(page_text, page_num=1):
         # Append requested metadata: {x} from {a}/ {y}
         if index == total_rows_this_page:
             desc = desc.replace(
-                "delete this = penyata ini akan dianggap betul. Jabatan Khidmat Pelanggan (Customer Care Department), Tingkat 17, Menara Bank Islam, No 22, Jalan Perak, 50450 Kuala Lumpur. Tel: 03-26 900 900 / Faks: 03-2782 1337. Emel / Email : contactcenter@bankislam.com.my",
+                "penyata ini akan dianggap betul. Jabatan Khidmat Pelanggan (Customer Care Department), Tingkat 17, Menara Bank Islam, No 22, Jalan Perak, 50450 Kuala Lumpur. Tel: 03-26 900 900 / Faks: 03-2782 1337. Emel / Email : contactcenter@bankislam.com.my",
                 "")
 
         row["Bank Remark"] = desc
