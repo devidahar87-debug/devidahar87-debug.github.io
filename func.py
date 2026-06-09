@@ -179,7 +179,6 @@ def parse_bank_islam_page(page_text):
         rows.append(current)
 
     return rows
-
 def parse_public_bank_page(page_text):
     rows = []
     lines = [l.strip() for l in page_text.splitlines() if l.strip()]
