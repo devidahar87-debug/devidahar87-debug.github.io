@@ -169,7 +169,7 @@ def parse_bank_islam_page(page_text, page_num=1):
         desc = desc[:40].strip()
 
         # Append requested metadata: {x} from {a}/ {y}
-        row["Bank Remark"] = f"{desc} {index} from {total_rows_this_page}/ {page_num}"
+        row["Bank Remark"] = f"{index} from {total_rows_this_page}/ {page_num} /{desc} "
         processed_page_rows.append(row)
 
     return processed_page_rows
