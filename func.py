@@ -106,6 +106,7 @@ def parse_bank_islam_page(page_text):
         except ValueError:
             return None
 
+    print(lines)
     for line in lines:
         if any(f in line for f in BANK_ISLAM_FOOTER_KEYWORDS):
             break
