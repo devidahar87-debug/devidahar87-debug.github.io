@@ -171,6 +171,7 @@ def parse_bank_islam_page(page_text, page_num=1):
         # Append requested metadata: {x} from {a}/ {y}
         if index == total_rows_this_page:
             desc = desc.split('penyata')[0].strip()
+            desc = desc.split('Ever dreamed')[0].strip()
 
         row["Bank Remark"] = desc
         processed_page_rows.append(row)
