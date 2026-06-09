@@ -77,13 +77,14 @@ def parse_page(page_text, start_markers, footer_keywords, tx_regex=DEFAULT_TX_RE
 
 def parse_bank_islam_page(page_text):
     """
-    Parses Bank Islam iGain Account statements and ensures amounts are numeric.
+    Parses Bank Islam iGain Account statements across multiple pages
+    and ensures amounts are numeric.
     """
     rows = []
     lines = [l.strip() for l in page_text.splitlines() if l.strip()]
 
-    # Keywords signaling the end of the transaction table [cite: 130, 134]
-    BANK_ISLAM_FOOTER_KEYWORDS = [
+    # Keywords signaling template noise, headers, or page footers to ignore
+    BANK_ISLAM_SKIP_KEYWORDS = [
         "Sekiranyaandamendapati",
         "RINGKASANAKAUN",
         "Sekiranya anda mendapati",
@@ -91,7 +92,19 @@ def parse_bank_islam_page(page_text):
         "Untuk pertanyaan",
         "RINGKASAN AKAUN",
         "SUMMARY OF ACCOUNT",
-        "TOTAL DEBIT"
+        "TOTAL DEBIT",
+        "TOTAL CREDIT",
+        "MONTHLY AVERAGE",
+        "TARIKH PENYATA",
+        "STATEMENT DATE",
+        "HALAMAN",
+        "PAGE",
+        "NOMBOR AKAUN",
+        "ACCOUNT NO",
+        "CAWANGAN",
+        "BRANCH",
+        "PENYATA AKAUN",
+        "ACCOUNT STATEMENT"
     ]
 
     current = None
@@ -99,31 +112,35 @@ def parse_bank_islam_page(page_text):
     def clean_numeric(value):
         """Helper to convert string currency to float."""
         if not value:
-            return None  # Excel treats None as empty/null numeric
+            return None
         try:
-            # Remove commas and convert to float
             return float(value.replace(",", ""))
         except ValueError:
             return None
 
     for line in lines:
-        if any(f in line for f in BANK_ISLAM_FOOTER_KEYWORDS):
-            break
+        # FIX: Change break to continue so the script doesn't stop on page 1
+        if any(f in line for f in BANK_ISLAM_SKIP_KEYWORDS):
+            continue
 
-        # Match Date format (e.g., 2/01/25)
+        # Match Date format (e.g., 2/01/25 or 31/01/25)
         date_match = re.match(r"^(\d{1,2}/\d{2}/\d{2})", line)
 
         if date_match:
-            if current:
-                rows.append(current)
-
             date_str = date_match.group(1)
             remaining = line[len(date_str):].strip()
 
-            # Find all currency-like patterns (e.g., 100,502.78) [cite: 10, 29]
+            # Skip opening forward balance lines ("BAL B/F") across pages
+            if "BAL B/F" in remaining.upper() or "BALANCE B/F" in remaining.upper():
+                continue
+
+            if current:
+                rows.append(current)
+
+            # Find all currency-like patterns (e.g., 100,502.78)
             parts = re.findall(r"(\d{1,3}(?:,\d{3})*(?:\.\d{2}))", remaining)
 
-            # Last number is always the Balance [cite: 10, 29, 51]
+            # Last number is always the Balance
             balance = clean_numeric(parts[-1]) if len(parts) >= 1 else None
 
             debit = None
@@ -134,9 +151,9 @@ def parse_bank_islam_page(page_text):
                 credit = clean_numeric(parts[1])
             elif len(parts) == 2:
                 val = clean_numeric(parts[0])
-                # Heuristic: Transfers out (MB, IB, QR, JomPAY) are typically Debits [cite: 10, 51]
+                # Heuristic: Transfers out are typically Debits
                 header_upper = remaining.upper()
-                if any(k in header_upper for k in ["MB", "IB", "QR", "JOMPAY", "FPX"]):
+                if any(k in header_upper for k in ["MB", "IB", "QR", "JOMPAY", "FPX", "DEBIT", "CHG"]):
                     debit = val
                 else:
                     credit = val
@@ -149,98 +166,14 @@ def parse_bank_islam_page(page_text):
             current = {
                 "Date": date_str,
                 "Bank Remark": desc,
-                "Debit": debit,
-                "Credit": credit,
-                "Balance": balance
+                "Debit": debit if debit else "",
+                "Credit": credit if credit else "",
+                "Balance": balance if balance else ""
             }
 
-        elif current and not any(m in line for m in ["TARIKH", "DATE", "BALANCE", "HALAMAN"]):
-            # Append multi-line descriptions [cite: 10, 29]
+        elif current and not any(m in line for m in ["TARIKH", "DATE", "BALANCE", "HALAMAN", "DESCRIPTION", "(RM)"]):
+            # Append multi-line descriptions dynamically
             current["Bank Remark"] += " " + line
-
-    if current:
-        rows.append(current)
-
-    return rows
-
-
-def parse_bank_islam_page_0(page_text):
-    rows = []
-    lines = [l.strip() for l in page_text.splitlines() if l.strip()]
-
-    SKIP_KEYWORDS = [
-        "sekiranya anda mendapati",
-        "if you note any discrepancies",
-        "untuk pertanyaan",
-        "ringkasan akaun",
-        "summary of account",
-        "total debit",
-        "total credit",
-        "monthly average",
-        "tarikh penyata",
-        "statement date",
-        "halaman",
-        "page",
-        "nombor akaun",
-        "account no",
-        "cawangan",
-        "branch"
-    ]
-
-    current = None
-
-    def clean_numeric(v):
-        try:
-            return float(v.replace(",", ""))
-        except:
-            return None
-
-    for line in lines:
-        if any(f in line.lower() for f in SKIP_KEYWORDS):
-            continue
-
-        m = re.match(r"^(\d{1,2}/\d{2}/\d{2})", line)
-
-        if m:
-            date_str = m.group(1)
-            remaining = line[len(date_str):].strip()
-
-            if "BAL B/F" in remaining.upper() or "BALANCE B/F" in remaining.upper():
-                continue
-
-            if current:
-                rows.append(current)
-
-            amounts = re.findall(r"(\d{1,3}(?:,\d{3})*\.\d{2})", remaining)
-            balance = clean_numeric(amounts[-1]) if amounts else None
-
-            debit = ""
-            credit = ""
-
-            if len(amounts) >= 2:
-                amount = clean_numeric(amounts[0])
-                header = remaining.upper()
-
-                if any(k in header for k in ["MB ", "IB ", "DUITNOW", "JOMPAY", "FPX", "DEBIT", "CHG"]):
-                    debit = amount
-                else:
-                    credit = amount
-
-            desc = remaining
-            for a in amounts:
-                desc = desc.replace(a, "").strip()
-
-            current = {
-                "Date": date_str,
-                "Bank Remark": desc,
-                "Debit": debit,
-                "Credit": credit,
-                "Balance": balance
-            }
-
-        elif current:
-            if not any(k in line.upper() for k in ["DATE", "DESCRIPTION", "DEBIT", "CREDIT", "BALANCE", "(RM)"]):
-                current["Bank Remark"] += " " + line
 
     if current:
         rows.append(current)
