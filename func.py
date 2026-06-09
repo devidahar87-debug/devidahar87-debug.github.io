@@ -166,7 +166,7 @@ def parse_bank_islam_page(page_text, page_num=1):
             desc = desc_parts[0].strip()
 
         # Take up to the first 40 characters
-        desc = desc[:40].strip()
+        desc = desc[:80].strip()
 
         # Append requested metadata: {x} from {a}/ {y}
 
