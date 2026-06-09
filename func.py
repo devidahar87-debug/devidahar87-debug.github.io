@@ -75,99 +75,68 @@ def parse_page(page_text, start_markers, footer_keywords, tx_regex=DEFAULT_TX_RE
 
     return rows
 
-def parse_bank_islam_page(page_text):
+
+def parse_bank_islam_page(page_text, page_num=1):
     """
     Parses Bank Islam iGain Account statements across multiple pages
-    and ensures amounts are numeric.
+    and appends cross-reference row metrics to the description.
     """
-    rows = []
     lines = [l.strip() for l in page_text.splitlines() if l.strip()]
 
-    # Keywords signaling template noise, headers, or page footers to ignore
     BANK_ISLAM_SKIP_KEYWORDS = [
-        "Sekiranyaandamendapati",
-        "RINGKASANAKAUN",
-        "Sekiranya anda mendapati",
-        "If you note any discrepancies",
-        "Untuk pertanyaan",
-        "RINGKASAN AKAUN",
-        "SUMMARY OF ACCOUNT",
-        "TOTAL DEBIT",
-        "TOTAL CREDIT",
-        "MONTHLY AVERAGE",
-        "TARIKH PENYATA",
-        "STATEMENT DATE",
-        "HALAMAN",
-        "PAGE",
-        "NOMBOR AKAUN",
-        "ACCOUNT NO",
-        "CAWANGAN",
-        "BRANCH",
-        "PENYATA AKAUN",
-        "ACCOUNT STATEMENT",
-        "penyata ini akan dianggap betul. Jabatan Khidmat Pelanggan (Customer Care Department), Tingkat 17, Menara Bank Islam, No 22, Jalan Perak, 50450 Kuala Lumpur"
+        "sekiranya anda mendapati", "if you note any discrepancies", "untuk pertanyaan",
+        "ringkasan akaun", "summary of account", "total debit", "total credit",
+        "monthly average", "tarikh penyata", "statement date", "halaman", "page",
+        "nombor akaun", "account no", "cawangan", "branch", "penyata akaun", "account statement"
     ]
 
+    raw_page_rows = []
     current = None
 
     def clean_numeric(value):
-        """Helper to convert string currency to float."""
-        if not value:
-            return None
+        if not value: return None
         try:
             return float(value.replace(",", ""))
         except ValueError:
             return None
 
+    # Step 1: Extract all valid transactions found on this page text block
     for line in lines:
-        # FIX: Change break to continue so the script doesn't stop on page 1
-        if any(f in line for f in BANK_ISLAM_SKIP_KEYWORDS):
+        if any(f in line.lower() for f in BANK_ISLAM_SKIP_KEYWORDS):
             continue
 
-        # Match Date format (e.g., 2/01/25 or 31/01/25)
         date_match = re.match(r"^(\d{1,2}/\d{2}/\d{2})", line)
 
         if date_match:
             date_str = date_match.group(1)
             remaining = line[len(date_str):].strip()
 
-            # Skip opening forward balance lines ("BAL B/F") across pages
             if "BAL B/F" in remaining.upper() or "BALANCE B/F" in remaining.upper():
                 continue
 
             if current:
-                rows.append(current)
+                raw_page_rows.append(current)
 
-            # Find all currency-like patterns (e.g., 100,502.78)
             parts = re.findall(r"(\d{1,3}(?:,\d{3})*(?:\.\d{2}))", remaining)
-
-            # Last number is always the Balance
             balance = clean_numeric(parts[-1]) if len(parts) >= 1 else None
 
-            debit = None
-            credit = None
+            debit = ""
+            credit = ""
 
             if len(parts) == 3:
                 debit = clean_numeric(parts[0])
                 credit = clean_numeric(parts[1])
             elif len(parts) == 2:
                 val = clean_numeric(parts[0])
-                # Heuristic: Transfers out are typically Debits
                 header_upper = remaining.upper()
                 if any(k in header_upper for k in ["MB", "IB", "QR", "JOMPAY", "FPX", "DEBIT", "CHG"]):
                     debit = val
                 else:
                     credit = val
 
-            # Clean description by removing the identified amount strings
             desc = remaining
             for p in parts:
                 desc = desc.replace(p, "").strip()
-
-            desc_parts = re.split(r'\s{2,}', desc)
-            if desc_parts:
-                desc = desc_parts[0].strip()
-
 
             current = {
                 "Date": date_str,
@@ -177,14 +146,51 @@ def parse_bank_islam_page(page_text):
                 "Balance": balance if balance else ""
             }
 
-        elif current and not any(m in line for m in ["TARIKH", "DATE", "BALANCE", "HALAMAN", "DESCRIPTION", "(RM)"]):
-            # Append multi-line descriptions dynamically
+        elif current and not any(
+                m in line.upper() for m in ["TARIKH", "DATE", "BALANCE", "HALAMAN", "DESCRIPTION", "(RM)"]):
             current["Bank Remark"] += " " + line
 
     if current:
-        rows.append(current)
+        raw_page_rows.append(current)
 
-    return rows
+    # Step 2: Post-process descriptions to truncate and append requested trackers
+    total_rows_this_page = len(raw_page_rows)
+    processed_page_rows = []
+
+    for index, row in enumerate(raw_page_rows, start=1):
+        desc = row["Bank Remark"]
+
+        # Isolate the first line/phrase if wrapped
+        desc_parts = re.split(r'\s{2,}', desc)
+        if desc_parts:
+            desc = desc_parts[0].strip()
+
+        # Take up to the first 40 characters
+        desc = desc[:40].strip()
+
+        # Append requested metadata: {x} from {a}/ {y}
+        row["Bank Remark"] = f"{desc} {index} from {total_rows_this_page}/ {page_num}"
+        processed_page_rows.append(row)
+
+    return processed_page_rows
+
+
+def convert_bank(pdf_text, bank_name):
+    # Fallback default if multi-page structural array maps aren't present
+    if bank_name == "Bank Islam":
+        return parse_bank_islam_page(pdf_text, page_num=1)
+    # ... keep other standard banks unchanged ...
+    return []
+
+
+def process_pdf_page(page_text: str, bank_name: str, page_num: int):
+    """Target function handling single page parsing chunks explicitly"""
+    if bank_name == "Bank Islam":
+        result = parse_bank_islam_page(page_text, page_num=page_num)
+    else:
+        # Fallback tracking safely for non-supported banks
+        result = convert_bank(page_text, bank_name)
+    return json.dumps(result)
 def parse_public_bank_page(page_text):
     rows = []
     lines = [l.strip() for l in page_text.splitlines() if l.strip()]
