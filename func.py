@@ -75,8 +75,96 @@ def parse_page(page_text, start_markers, footer_keywords, tx_regex=DEFAULT_TX_RE
 
     return rows
 
-
 def parse_bank_islam_page(page_text):
+    """
+    Parses Bank Islam iGain Account statements and ensures amounts are numeric.
+    """
+    rows = []
+    lines = [l.strip() for l in page_text.splitlines() if l.strip()]
+
+    # Keywords signaling the end of the transaction table [cite: 130, 134]
+    BANK_ISLAM_FOOTER_KEYWORDS = [
+        "Sekiranyaandamendapati",
+        "RINGKASANAKAUN",
+        "Sekiranya anda mendapati",
+        "If you note any discrepancies",
+        "Untuk pertanyaan",
+        "RINGKASAN AKAUN",
+        "SUMMARY OF ACCOUNT",
+        "TOTAL DEBIT"
+    ]
+
+    current = None
+
+    def clean_numeric(value):
+        """Helper to convert string currency to float."""
+        if not value:
+            return None  # Excel treats None as empty/null numeric
+        try:
+            # Remove commas and convert to float
+            return float(value.replace(",", ""))
+        except ValueError:
+            return None
+
+    for line in lines:
+        if any(f in line for f in BANK_ISLAM_FOOTER_KEYWORDS):
+            break
+
+        # Match Date format (e.g., 2/01/25)
+        date_match = re.match(r"^(\d{1,2}/\d{2}/\d{2})", line)
+
+        if date_match:
+            if current:
+                rows.append(current)
+
+            date_str = date_match.group(1)
+            remaining = line[len(date_str):].strip()
+
+            # Find all currency-like patterns (e.g., 100,502.78) [cite: 10, 29]
+            parts = re.findall(r"(\d{1,3}(?:,\d{3})*(?:\.\d{2}))", remaining)
+
+            # Last number is always the Balance [cite: 10, 29, 51]
+            balance = clean_numeric(parts[-1]) if len(parts) >= 1 else None
+
+            debit = None
+            credit = None
+
+            if len(parts) == 3:
+                debit = clean_numeric(parts[0])
+                credit = clean_numeric(parts[1])
+            elif len(parts) == 2:
+                val = clean_numeric(parts[0])
+                # Heuristic: Transfers out (MB, IB, QR, JomPAY) are typically Debits [cite: 10, 51]
+                header_upper = remaining.upper()
+                if any(k in header_upper for k in ["MB", "IB", "QR", "JOMPAY", "FPX"]):
+                    debit = val
+                else:
+                    credit = val
+
+            # Clean description by removing the identified amount strings
+            desc = remaining
+            for p in parts:
+                desc = desc.replace(p, "").strip()
+
+            current = {
+                "Date": date_str,
+                "Bank Remark": desc,
+                "Debit": debit,
+                "Credit": credit,
+                "Balance": balance
+            }
+
+        elif current and not any(m in line for m in ["TARIKH", "DATE", "BALANCE", "HALAMAN"]):
+            # Append multi-line descriptions [cite: 10, 29]
+            current["Bank Remark"] += " " + line
+
+    if current:
+        rows.append(current)
+
+    return rows
+
+
+def parse_bank_islam_page_0(page_text):
     rows = []
     lines = [l.strip() for l in page_text.splitlines() if l.strip()]
 
