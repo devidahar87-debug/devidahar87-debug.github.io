@@ -488,7 +488,7 @@
         </ul>
     </div>
 
-    <script>
+<script>
         // --- TAB SWITCHING SYSTEM INTERFACES ---
         function switchTab(tabId) {
             document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.remove('active'));
@@ -498,19 +498,19 @@
             if(targetBtn) targetBtn.classList.add('active');
         }
 
-        // Initialize PDF.js
+        // Initialize PDF.js Core Worker Pipeline
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
         let pyodide = null;
         let currentData = [];
         let currentBank = '';
 
-        // Initialize Pyodide and fetch external Python script
+        // Unified Engine Assembly: Loads runtime environments and your exact multi-bank algorithms
         async function initPyodide() {
             const initStatus = document.getElementById('initStatus');
             const convertBtn = document.getElementById('convertBtn');
 
             try {
-                initStatus.innerHTML = '⏳ Loading Python runtime...';
+                initStatus.innerHTML = '⏳ Loading Python runtime (this may take 10-15 seconds)...';
                 pyodide = await loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.1/full/" });
 
                 initStatus.innerHTML = '📥 Loading package manager (micropip)...';
@@ -519,131 +519,345 @@
                 initStatus.innerHTML = '🎨 Installing professional Excel engine (openpyxl)...';
                 await pyodide.runPythonAsync("import micropip; await micropip.install('openpyxl')");
 
-                initStatus.innerHTML = '📥 Registering Excel core algorithms...';
+                initStatus.innerHTML = '📥 Registering Financial Hub Algorithms...';
 
-                // Safe Embedded Script Engine Setup
-                // (Escaped curly braces and used proper string concatenation for Javascript compatibility)
+                // Embedded Script Matrix (Contains your complete original func.py multi-bank logic)
                 const pythonCode = "import io\n" +
 "import base64\n" +
+"import json\n" +
+"import re\n" +
 "import openpyxl\n" +
 "from openpyxl.styles import Font, PatternFill, Alignment, Border, Side\n" +
 "from openpyxl.utils import get_column_letter\n" +
+"\n" +
+"DEFAULT_TX_REGEX = re.compile(\n" +
+"    r'^(?P<date>\\d{2}/\\d{2})\\s+'\n" +
+"    r'(?P<header>.+?)\\s+'\n" +
+"    r'(?P<amount>(?:\\d{1,3}(?:\\,\\d{3})*|\\d+)?\\.\\d{2})'\n" +
+"    r'\\s*(?P<sign>[+-])?\\s+'\n" +
+"    r'(?P<balance>(?:\\d{1,3}(?:\\,\\d{3})*|\\d+)?\\.\\d{2})$'\n" +
+")\n" +
+"\n" +
+"def parse_page(page_text, start_markers, footer_keywords, tx_regex=DEFAULT_TX_REGEX):\n" +
+"    rows = []\n" +
+"    current = None\n" +
+"    lines = page_text.splitlines()\n" +
+"    start_idx = 0\n" +
+"    for i, line in enumerate(lines):\n" +
+"        line = line.strip()\n" +
+"        if any(m.lower() in line.lower() for m in start_markers):\n" +
+"            start_idx = i + 1\n" +
+"            break\n" +
+"    for line in lines[start_idx:]:\n" +
+"        line = line.strip()\n" +
+"        if not line: continue\n" +
+"        if any(f.lower() in line.lower() for f in footer_keywords): break\n" +
+"        date_match = re.match(r'^(\\d{2}/\\d{2})', line)\n" +
+"        if date_match:\n" +
+"            match = tx_regex.search(line)\n" +
+"            if current: rows.append(current)\n" +
+"            if match:\n" +
+"                amount_str = match.group('amount').replace(',', '') if match.group('amount') else '0.0'\n" +
+"                balance_str = match.group('balance').replace(',', '') if match.group('balance') else '0.0'\n" +
+"                amount = float(amount_str) if amount_str else 0.0\n" +
+"                balance = float(balance_str) if balance_str else 0.0\n" +
+"                sign = match.group('sign') if 'sign' in match.groupdict() and match.group('sign') else '+'\n" +
+"                current = {\n" +
+"                    'Date': match.group('date'),\n" +
+"                    'Bank Remark': match.group('header').strip(),\n" +
+"                    'Debit': amount if sign == '-' else '',\n" +
+"                    'Credit': amount if sign == '+' or sign == '' else '',\n" +
+"                    'Balance': balance\n" +
+"                }\n" +
+"            else:\n" +
+"                current = {\n" +
+"                    'Date': line[:5],\n" +
+"                    'Bank Remark': line[6:].strip(),\n" +
+"                    'Debit': '',\n" +
+"                    'Credit': '',\n" +
+"                    'Balance': ''\n" +
+"                }\n" +
+"        else:\n" +
+"            if current: current['Bank Remark'] += ' ' + line\n" +
+"    if current: rows.append(current)\n" +
+"    return rows\n" +
+"\n" +
+"def parse_bank_islam_page(page_text, page_num=1):\n" +
+"    lines = [l.strip() for l in page_text.splitlines() if l.strip()]\n" +
+"    BANK_ISLAM_SKIP_KEYWORDS = [\n" +
+"        'sekiranya anda mendapati', 'if you note any discrepancies', 'untuk pertanyaan',\n" +
+"        'ringkasan akaun', 'summary of account', 'total debit', 'total credit',\n" +
+"        'monthly average', 'tarikh penyata', 'statement date', 'halaman', 'page',\n" +
+"        'nombor akaun', 'account no', 'cawangan', 'branch', 'penyata akaun', 'account statement'\n" +
+"    ]\n" +
+"    raw_page_rows = []\n" +
+"    current = None\n" +
+"    def clean_numeric(value):\n" +
+"        if not value: return None\n" +
+"        try: return float(value.replace(',', ''))\n" +
+"        except ValueError: return None\n" +
+"    for line in lines:\n" +
+"        if any(f in line.lower() for f in BANK_ISLAM_SKIP_KEYWORDS): continue\n" +
+"        date_match = re.match(r'^(\\d{1,2}/\\d{2}/\\d{2,4})', line)\n" +
+"        if date_match:\n" +
+"            date_str = date_match.group(1)\n" +
+"            remaining = line[len(date_str):].strip()\n" +
+"            if 'BAL B/F' in remaining.upper() or 'BALANCE B/F' in remaining.upper(): continue\n" +
+"            if current: raw_page_rows.append(current)\n" +
+"            parts = re.findall(r'(\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2}))', remaining)\n" +
+"            balance = clean_numeric(parts[-1]) if len(parts) >= 1 else None\n" +
+"            debit = ''\n" +
+"            credit = ''\n" +
+"            if len(parts) == 3:\n" +
+"                debit = clean_numeric(parts[0])\n" +
+"                credit = clean_numeric(parts[1])\n" +
+"            elif len(parts) == 2:\n" +
+"                val = clean_numeric(parts[0])\n" +
+"                header_upper = remaining.upper()\n" +
+"                if any(k in header_upper for k in ['MB', 'IB', 'QR', 'JOMPAY', 'FPX', 'DEBIT', 'CHG']): debit = val\n" +
+"                else: credit = val\n" +
+"            desc = remaining\n" +
+"            for p in parts: desc = desc.replace(p, '').strip()\n" +
+"            current = {\n" +
+"                'Date': date_str,\n" +
+"                'Bank Remark': desc,\n" +
+"                'Debit': debit if debit else '',\n" +
+"                'Credit': credit if credit else '',\n" +
+"                'Balance': balance if balance else ''\n" +
+"            }\n" +
+"        elif current and not any(m in line.upper() for m in ['TARIKH', 'DATE', 'BALANCE', 'HALAMAN', 'DESCRIPTION', '(RM)']):\n" +
+"            current['Bank Remark'] += ' ' + line\n" +
+"    if current: raw_page_rows.append(current)\n" +
+"    total_rows_this_page = len(raw_page_rows)\n" +
+"    processed_page_rows = []\n" +
+"    for index, row in enumerate(raw_page_rows, start=1):\n" +
+"        desc = row['Bank Remark']\n" +
+"        desc_parts = re.split(r'\\s{2,}', desc)\n" +
+"        if desc_parts: desc = desc_parts[0].strip()\n" +
+"        if index == total_rows_this_page:\n" +
+"            desc = desc.split('penyata')[0].strip()\n" +
+"            desc = desc.split('Ever dreamed')[0].strip()\n" +
+"        row['Bank Remark'] = desc\n" +
+"        processed_page_rows.append(row)\n" +
+"    return processed_page_rows\n" +
+"\n" +
+"def parse_public_bank_page(page_text):\n" +
+"    rows = []\n" +
+"    lines = [l.strip() for l in page_text.splitlines() if l.strip()]\n" +
+"    SKIP_KEYWORDS = ['balance b/f', 'balance c/f', 'balance from last statement', 'tarikh', 'date', 'urus niaga', 'dilindungi oleh', 'protected by pidm']\n" +
+"    current = None\n" +
+"    last_date = ''\n" +
+"    def clean_val(val):\n" +
+"        if not val: return None\n" +
+"        try: return float(val.replace(',', ''))\n" +
+"        except ValueError: return None\n" +
+"    for line in lines:\n" +
+"        date_match = re.match(r'^(\\d{2}/\\d{2})', line)\n" +
+"        parts = re.findall(r'(\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2}))', line)\n" +
+"        if date_match or (len(parts) >= 1 and not any(k in line.lower() for k in SKIP_KEYWORDS)):\n" +
+"            if date_match:\n" +
+"                last_date = date_match.group(1)\n" +
+"                content = line[len(last_date):].strip()\n" +
+"            else: content = line\n" +
+"            if any(k in content.lower() for k in SKIP_KEYWORDS): continue\n" +
+"            if current: rows.append(current)\n" +
+"            debit = None\n" +
+"            credit = None\n" +
+"            balance = None\n" +
+"            if len(parts) >= 2:\n" +
+"                balance = clean_val(parts[-1])\n" +
+"                val = clean_val(parts[-2])\n" +
+"                content_upper = content.upper()\n" +
+"                is_credit = any(x in content_upper for x in [' CR ', 'CR ', 'CR-', 'KREDIT'])\n" +
+"                if 'CR CARD PYMT' in content_upper: is_credit = False\n" +
+"                if 'DEP-ECP' in content_upper: is_credit = True\n" +
+"                if is_credit: credit = val\n" +
+"                else: debit = val\n" +
+"            elif len(parts) == 1: balance = clean_val(parts[0])\n" +
+"            desc = content\n" +
+"            for p in parts: desc = desc.replace(p, '').strip()\n" +
+"            current = {\n" +
+"                'Date': last_date,\n" +
+"                'Bank Remark': desc,\n" +
+"                'Debit': debit if debit else '',\n" +
+"                'Credit': credit if credit else '',\n" +
+"                'Balance': balance if balance else ''\n" +
+"            }\n" +
+"        elif current:\n" +
+"            if not any(k in line for k in ['Muka Surat', 'Page', 'Penyata ini', 'BERHAD']): current['Bank Remark'] += ' ' + line\n" +
+"    if current: rows.append(current)\n" +
+"    return rows\n" +
+"\n" +
+"def find_cimb_opening_bal(statement_text):\n" +
+"    match = re.search(r'Opening Balance\\s+([\\d,]+\\.\\d{2})', statement_text, re.IGNORECASE)\n" +
+"    if match: return float(match.group(1).replace(',', ''))\n" +
+"    return 0.00\n" +
+"\n" +
+"def parse_cimb_page(page_text, opening_bal):\n" +
+"    rows = []\n" +
+"    lines = [l.strip() for l in page_text.splitlines() if l.strip()]\n" +
+"    CIMB_IGNORE = ['statement of account', 'page / halaman', 'continue next', 'opening balance', 'closing balance', 'no of withdrawal no of deposits']\n" +
+"    def clean_val(val):\n" +
+"        if not val: return 0.0\n" +
+"        try: return float(val.replace(',', '').strip())\n" +
+"        except: return 0.0\n" +
+"    current = None\n" +
+"    for line in lines:\n" +
+"        if any(k in line.lower() for k in CIMB_IGNORE) or 'cimb' in line.lower(): continue\n" +
+"        date_match = re.match(r'^(\\d{2}/\\d{2}/\\d{4})', line)\n" +
+"        if date_match:\n" +
+"            if current: rows.append(current)\n" +
+"            date_str = date_match.group(1)\n" +
+"            content = line[len(date_str):].strip()\n" +
+"            parts = re.findall(r'(\\d{1,3}(?:,\\d{3})*\\.\\d{2})', content)\n" +
+"            balance = clean_val(parts[-1]) if parts else 0.0\n" +
+"            row_amount = clean_val(parts[-2]) if len(parts) >= 2 else 0.0\n" +
+"            desc = content\n" +
+"            for p in parts: desc = desc.replace(p, '').strip()\n" +
+"            current = {\n" +
+"                'Date': date_str,\n" +
+"                'Bank Remark': desc,\n" +
+"                'Amount': row_amount,\n" +
+"                'Debit': 0.0,\n" +
+"                'Credit': 0.0,\n" +
+"                'Balance': balance\n" +
+"            }\n" +
+"        elif current and not any(m in line for m in ['Date', 'Tarikh', 'Description']): current['Bank Remark'] += ' ' + line\n" +
+"    if current: rows.append(current)\n" +
+"    processed_data = []\n" +
+"    prev_row_bal = opening_bal\n" +
+"    for row in rows:\n" +
+"        diff = round(row['Balance'] - prev_row_bal, 2)\n" +
+"        if diff < 0:\n" +
+"            row['Debit'] = abs(diff)\n" +
+"            row['Credit'] = 0.0\n" +
+"        else:\n" +
+"            row['Credit'] = diff\n" +
+"            row['Debit'] = 0.0\n" +
+"        prev_row_bal = row['Balance']\n" +
+"        if 'Amount' in row: del row['Amount']\n" +
+"        processed_data.append(row)\n" +
+"    return processed_data\n" +
+"\n" +
+"def convert_bank(pdf_text, bank_name):\n" +
+"    if bank_name == 'Bank Islam': return parse_bank_islam_page(pdf_text)\n" +
+"    elif bank_name == 'Public Bank': return parse_public_bank_page(pdf_text)\n" +
+"    elif bank_name == 'CIMB':\n" +
+"        opening_bal = find_cimb_opening_bal(pdf_text)\n" +
+"        return parse_cimb_page(pdf_text, opening_bal)\n" +
+"    elif bank_name == 'Maybank':\n" +
+"        return parse_page(pdf_text, ['BEGINNING BALANCE', 'ENTRY DATE', 'TRANSACTION DESCRIPTION'], ['ENDING BALANCE', 'BAKI LEGAR', 'LEDGER =', 'PROTECTED BY PIDM'])\n" +
+"    elif bank_name == 'Agrobank':\n" +
+"        return parse_page(pdf_text, ['BEGINNING BALANCE', 'PREVIOUS STMT BAL', 'DEBIT(-)/CREDIT'], ['CLOSING BALANCE', 'BAKI LEGAR', 'PROTECTED BY PIDM'])\n" +
+"    elif bank_name == 'AmBank':\n" +
+"        return parse_page(pdf_text, ['Balance b/f', 'CHEQUE NO.', 'NO. CEK'], ['CLOSING BALANCE', 'BAKI LEGAR', 'AmBank (M) Berhad'])\n" +
+"    return []\n" +
+"\n" +
+"def process_pdf_page(page_text, bank_name, page_num):\n" +
+"    result = convert_bank(page_text, bank_name)\n" +
+"    return json.dumps(result)\n" +
 "\n" +
 "def generate_pro_amort_excel_bytes(principal, annual_rate, years, method):\n" +
 "    wb = openpyxl.Workbook()\n" +
 "    ws = wb.active\n" +
 "    ws.title = 'Amortization Schedule'\n" +
-"    \n" +
 "    ws.views.sheetView[0].showGridLines = True\n" +
 "    ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE\n" +
 "    ws.page_setup.paperSize = ws.PAPERSIZE_A4\n" +
 "    ws.page_setup.fitToWidth = 1\n" +
 "    ws.page_setup.fitToHeight = 0\n" +
 "    ws.sheet_properties.pageSetUpPr.fitToPage = True\n" +
-"\n" +
-"    font_family = 'Segoe UI'\n" +
+"    font_name = 'Segoe UI'\n" +
+"    title_font = Font(name=font_name, size=16, bold=True, color='1A365D')\n" +
+"    label_font = Font(name=font_name, size=10, bold=True, color='2D3748')\n" +
+"    reg_font = Font(name=font_name, size=10, color='2D3748')\n" +
+"    header_font = Font(name=font_name, size=11, bold=True, color='FFFFFF')\n" +
+"    total_font = Font(name=font_name, size=10, bold=True, color='000000')\n" +
 "    header_fill = PatternFill(start_color='2B6CB0', end_color='2B6CB0', fill_type='solid')\n" +
 "    zebra_fill = PatternFill(start_color='F7FAFC', end_color='F7FAFC', fill_type='solid')\n" +
-"    \n" +
-"    header_font = Font(name=font_family, size=11, bold=True, color='FFFFFF')\n" +
-"    title_font = Font(name=font_family, size=16, bold=True, color='1A365D')\n" +
-"    label_font = Font(name=font_family, size=10, bold=True, color='2D3748')\n" +
-"    regular_font = Font(name=font_family, size=10, color='2D3748')\n" +
-"    bold_total_font = Font(name=font_family, size=10, bold=True, color='000000')\n" +
-"    \n" +
 "    thin_side = Side(border_style='thin', color='E2E8F0')\n" +
 "    double_side = Side(border_style='double', color='4A5568')\n" +
-"    row_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)\n" +
-"    total_border = Border(top=thin_side, bottom=double_side)\n" +
-"    \n" +
+"    grid_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)\n" +
+"    summary_border = Border(top=thin_side, bottom=double_side)\n" +
 "    ws['A1'] = 'LOAN AMORTIZATION SCHEDULE'\n" +
 "    ws['A1'].font = title_font\n" +
-"    \n" +
-"    meta_inputs = [\n" +
-"        ('Base Principal Loan amount:', float(principal), 'RM #,##0.00'),\n" +
-"        ('Annual Percentage Interest:', float(annual_rate) / 100, '0.00%'),\n" +
-"        ('Loan Term Horizon (Years):', int(years), '0'),\n" +
-"        ('Amortization Strategy Method:', str(method).title(), '@')\n" +
+"    metadata = [\n" +
+"        ('Base Loan Principal:', principal, 'RM #,##0.00'),\n" +
+"        ('Nominal Annual Rate:', annual_rate / 100, '0.00%'),\n" +
+"        ('Term Horizon (Years):', years, '0'),\n" +
+"        ('Calculation Framework:', method.title(), '@')\n" +
 "    ]\n" +
-"    \n" +
-"    for idx, (label, val, num_fmt) in enumerate(meta_inputs, start=3):\n" +
-"        ws['A' + str(idx)] = label\n" +
-"        ws['A' + str(idx)].font = label_font\n" +
-"        ws['B' + str(idx)] = val\n" +
-"        ws['B' + str(idx)].font = regular_font\n" +
-"        ws['B' + str(idx)].number_format = num_fmt\n" +
-"        ws['B' + str(idx)].alignment = Alignment(horizontal='left')\n" +
-"        \n" +
+"    for idx, (label, val, num_format) in enumerate(metadata, start=3):\n" +
+"        ws[f'A{idx}'] = label\n" +
+"        ws[f'A{idx}'].font = label_font\n" +
+"        ws[f'B{idx}'] = val\n" +
+"        ws[f'B{idx}'].font = reg_font\n" +
+"        ws[f'B{idx}'].number_format = num_format\n" +
+"        ws[f'B{idx}'].alignment = Alignment(horizontal='left')\n" +
 "    headers = ['Month', 'Scheduled Payment', 'Principal Component', 'Interest Component', 'Remaining Balance']\n" +
 "    start_row = 8\n" +
-"    \n" +
-"    for col_idx, header in enumerate(headers, start=1):\n" +
-"        cell = ws.cell(row=start_row, column=col_idx, value=header)\n" +
+"    for col_idx, text in enumerate(headers, start=1):\n" +
+"        cell = ws.cell(row=start_row, column=col_idx, value=text)\n" +
 "        cell.font = header_font\n" +
 "        cell.fill = header_fill\n" +
 "        cell.alignment = Alignment(horizontal='center' if col_idx == 1 else 'right', vertical='center')\n" +
-"        cell.border = row_border\n" +
-"        \n" +
+"        cell.border = grid_border\n" +
 "    total_months = int(years * 12)\n" +
-"    current_row = start_row + 1\n" +
-"    \n" +
-"    ws.cell(row=current_row, column=5, value=float(principal)).number_format = 'RM #,##0.00'\n" +
-"    ws.cell(row=current_row, column=5).font = regular_font\n" +
-"    \n" +
+"    data_start = start_row + 1\n" +
+"    ws.cell(row=data_start, column=5, value=principal).number_format = 'RM #,##0.00'\n" +
+"    ws.cell(row=data_start, column=5).font = reg_font\n" +
 "    for m in range(1, total_months + 1):\n" +
-"        prev_bal_cell = 'E' + str(current_row + m - 1)\n" +
-"        row_str = str(current_row + m)\n" +
-"        ws.cell(row=current_row + m, column=1, value=m).alignment = Alignment(horizontal='center')\n" +
-"        \n" +
+"        prev_row = data_start + m - 1\n" +
+"        curr_row = data_start + m\n" +
+"        r_str = str(curr_row)\n" +
+"        ws.cell(row=curr_row, column=1, value=m).alignment = Alignment(horizontal='center')\n" +
 "        if method == 'reducing':\n" +
-"            monthly_rate = '($B$4/12)'\n" +
-"            ws.cell(row=current_row + m, column=2, value='=ROUND((' + prev_bal_cell + '*' + monthly_rate + ')/(1-(1+' + monthly_rate + ')^(-(' + str(total_months) + '-' + str(m) + '+1))), 2)')\n" +
-"            ws.cell(row=current_row + m, column=4, value='=ROUND(' + prev_bal_cell + '*' + monthly_rate + ', 2)')\n" +
-"            ws.cell(row=current_row + m, column=3, value='=B' + row_str + '-D' + row_str)\n" +
-"            ws.cell(row=current_row + m, column=5, value='=MAX(0, ROUND(' + prev_bal_cell + '-C' + row_str + ', 2))')\n" +
+"            rate_var = '($B$4/12)'\n" +
+"            ws.cell(row=curr_row, column=2, value=f'=ROUND((E{prev_row}*{rate_var})/(1-(1+{rate_var})^(-({total_months}-{m}+1))), 2)')\n" +
+"            ws.cell(row=curr_row, column=4, value=f'=ROUND(E{prev_row}*{rate_var}, 2)')\n" +
+"            ws.cell(row=curr_row, column=3, value=f'=B{r_str}-D{r_str}')\n" +
+"            ws.cell(row=curr_row, column=5, value=f'=MAX(0, ROUND(E{prev_row}-C{r_str}, 2))')\n" +
 "        else:\n" +
-"            ws.cell(row=current_row + m, column=2, value='=ROUND(($B$3 + ($B$3 * $B$4 * $B$5)) / ' + str(total_months) + ', 2)')\n" +
-"            ws.cell(row=current_row + m, column=4, value='=ROUND(($B$3 * $B$4 * $B$5) / ' + str(total_months) + ', 2)')\n" +
-"            ws.cell(row=current_row + m, column=3, value='=B' + row_str + '-D' + row_str)\n" +
-"            ws.cell(row=current_row + m, column=5, value='=MAX(0, ROUND(' + prev_bal_cell + '-C' + row_str + ', 2))')\n" +
-"            \n" +
+"            ws.cell(row=curr_row, column=2, value=f'=ROUND(($B$3 + ($B$3 * $B$4 * $B$5)) / {total_months}, 2)')\n" +
+"            ws.cell(row=curr_row, column=4, value=f'=ROUND(($B$3 * $B$4 * $B$5) / {total_months}, 2)')\n" +
+"            ws.cell(row=curr_row, column=3, value=f'=B{r_str}-D{r_str}')\n" +
+"            ws.cell(row=curr_row, column=5, value=f'=MAX(0, ROUND(E{prev_row}-C{r_str}, 2))')\n" +
 "        for col_idx in range(1, 6):\n" +
-"            c = ws.cell(row=current_row + m, column=col_idx)\n" +
-"            c.font = regular_font\n" +
-"            c.border = row_border\n" +
-"            if col_idx > 1:\n" +
-"                c.number_format = 'RM #,##0.00'\n" +
-"            if m % 2 == 0:\n" +
-"                c.fill = zebra_fill\n" +
-"                \n" +
-"    last_data_row = current_row + total_months\n" +
-"    tot_row = last_data_row + 1\n" +
-"    ws.cell(row=tot_row, column=1, value='Total Summary').font = bold_total_font\n" +
-"    ws.cell(row=tot_row, column=1).border = total_border\n" +
-"    \n" +
-"    for col_idx, col_let in enumerate(['B', 'C', 'D'], start=2):\n" +
-"        ws.cell(row=tot_row, column=col_idx, value='=SUM(' + col_let + str(current_row+1) + ':' + col_let + str(last_data_row) + ')').font = bold_total_font\n" +
-"        ws.cell(row=tot_row, column=col_idx).number_format = 'RM #,##0.00'\n" +
-"        ws.cell(row=tot_row, column=col_idx).border = total_border\n" +
-"        \n" +
+"            c = ws.cell(row=curr_row, column=col_idx)\n" +
+"            c.font = reg_font\n" +
+"            c.border = grid_border\n" +
+"            if col_idx > 1: c.number_format = 'RM #,##0.00'\n" +
+"            if m % 2 == 0: c.fill = zebra_fill\n" +
+"    total_row = data_start + total_months + 1\n" +
+"    ws.cell(row=total_row, column=1, value='Total Summary').font = total_font\n" +
+"    ws.cell(row=total_row, column=1).border = summary_border\n" +
+"    for col_idx, letter in enumerate(['B', 'C', 'D'], start=2):\n" +
+"        cell = ws.cell(row=total_row, column=col_idx, value=f'=SUM({letter}{data_start + 1}:{letter}{total_row - 1})')\n" +
+"        cell.font = total_font\n" +
+"        cell.number_format = 'RM #,##0.00'\n" +
+"        cell.border = summary_border\n" +
 "    for col in ws.columns:\n" +
-"        max_len = max(len(str(cell.value or '')) for cell in col)\n" +
+"        max_len = max(len(str(cell.value or \"\")) for cell in col)\n" +
 "        col_letter = get_column_letter(col[0].column)\n" +
 "        ws.column_dimensions[col_letter].width = max(max_len + 4, 14)\n" +
-"        \n" +
-"    excel_buffer = io.BytesIO()\n" +
-"    wb.save(excel_buffer)\n" +
-"    excel_buffer.seek(0)\n" +
-"    return base64.b64encode(excel_buffer.getvalue()).decode('utf-8')\n";
+"    buffer = io.BytesIO()\n" +
+"    wb.save(buffer)\n" +
+"    buffer.seek(0)\n" +
+"    return base64.b64encode(buffer.getvalue()).decode('utf-8')\n";
 
                 await pyodide.runPythonAsync(pythonCode);
 
-                initStatus.innerHTML = '✅ Ready!';
+                initStatus.innerHTML = '✅ Ready! All bank parser templates matched successfully.';
+                initStatus.style.background = '#d4edda';
+                initStatus.style.borderLeftColor = '#28a745';
                 convertBtn.disabled = false;
+
                 setTimeout(() => { initStatus.style.display = 'none'; }, 3000);
             } catch (error) {
-                initStatus.innerHTML = `❌ Failed to load: ${error.message}`;
-                console.error(error);
+                console.error('Failed to initialize Pyodide:', error);
+                initStatus.innerHTML = `❌ Failed to load parsing engines: ${error.message}`;
+                initStatus.style.background = '#f8d7da';
+                initStatus.style.borderLeftColor = '#dc3545';
             }
         }
 
@@ -684,6 +898,7 @@
             return fullText;
         }
 
+        // Master Conversion Pipeline Strategy Hook
         async function convertPDF() {
             const fileInput = document.getElementById('pdfFile');
             const bank = document.getElementById('bankSelect').value;
@@ -723,6 +938,7 @@
                 let aggregatedTransactions = [];
                 const totalPages = pdf.numPages;
 
+                // Send pages one-by-one to our internal workspace engine
                 for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
                     progressBar.value = 10 + Math.round((pageNum / totalPages) * 70);
                     progressText.textContent = `Processing Page ${pageNum} of ${totalPages}...`;
@@ -750,9 +966,6 @@
                     }
 
                     const processPageFunc = pyodide.globals.get('process_pdf_page');
-                    if (!processPageFunc) {
-                         throw new Error("Bank statement parsing module func.py not loaded yet.");
-                    }
                     const pageResultJson = processPageFunc(pageText, bank, pageNum);
                     const pageTransactions = JSON.parse(pageResultJson);
                     if (pageTransactions && pageTransactions.length > 0) {
@@ -788,6 +1001,7 @@
             }
         }
 
+        // Render data viewport elements
         function displayTable(data) {
             const tableContainer = document.getElementById('tableContainer');
             const columns = ['Date', 'Bank Remark', 'Debit', 'Credit', 'Balance'];
@@ -803,7 +1017,9 @@
                     let value = row[col];
                     if (value === null || value === undefined || value === '') value = '-';
                     if ((col === 'Debit' || col === 'Credit' || col === 'Balance') && value && value !== '-') {
-                        value = `RM ${parseFloat(value).toFixed(2)}`;
+                        // Support formatting if numbers are already converted into numeric types
+                        let numericValue = typeof value === 'string' ? parseFloat(value.replace(/,/g, '')) : value;
+                        value = isNaN(numericValue) ? value : `RM ${numericValue.toFixed(2)}`;
                     }
                     html += `<td>${value}</td>`;
                 });
@@ -864,6 +1080,7 @@
             statusDiv.className = `status ${type}`;
         }
 
+        // Browser initialization anchor hook
         window.addEventListener('load', () => {
             if (typeof pdfjsLib === 'undefined') {
                 document.getElementById('initStatus').innerHTML = '❌ PDF.js library failed to load. Please check network connectivity.';
@@ -913,6 +1130,7 @@
             document.getElementById('totalInterestResult').innerHTML = `Total Interest Payable: <strong>RM ${totalInterest.toFixed(2)}</strong>`;
         }
 
+        // Compound Interest Calculator
         function calculateCompound() {
             const P = parseFloat(document.getElementById('fdPrincipal').value) || 0;
             const annualRate = parseFloat(document.getElementById('fdRate').value) || 0;
@@ -921,6 +1139,15 @@
             const r = annualRate / 100;
             const A = P * Math.pow((1 + (r / n)), (n * t));
             document.getElementById('fdResult').textContent = `RM ${A.toFixed(2)}`;
+        }
+
+        // Tax / SST Calculator Engine
+        function calculateTax() {
+            const baseAmount = parseFloat(document.getElementById('taxAmount').value) || 0;
+            const ratePercentage = parseFloat(document.getElementById('taxRate').value) || 0;
+
+            const totalAmount = baseAmount * (1 + (ratePercentage / 100));
+            document.getElementById('taxResult').textContent = `RM ${totalAmount.toFixed(2)}`;
         }
 
         function generateAmortizationSchedule() {
