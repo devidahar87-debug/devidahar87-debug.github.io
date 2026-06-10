@@ -885,4 +885,155 @@
 
         function calculateLoan() {
             const P = parseFloat(document.getElementById('loanAmount').value) || 0;
-            const annualRate = parseFloat(
+            const annualRate = parseFloat(document.getElementById('loanRate').value) || 0;
+            const years = parseFloat(document.getElementById('loanYears').value) || 0;
+            const method = document.querySelector('input[name="calcMethod"]:checked').value;
+
+            if (P <= 0 || annualRate <= 0 || years <= 0) {
+                document.getElementById('loanResult').textContent = "RM 0.00";
+                document.getElementById('totalInterestResult').textContent = "";
+                return;
+            }
+
+            let monthlyPayment = 0;
+            let totalInterest = 0;
+
+            if (method === 'reducing') {
+                const r = (annualRate / 100) / 12;
+                const n = years * 12;
+                monthlyPayment = (P * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+                totalInterest = (monthlyPayment * n) - P;
+            } else {
+                totalInterest = P * (annualRate / 100) * years;
+                const totalPayable = P + totalInterest;
+                monthlyPayment = totalPayable / (years * 12);
+            }
+
+            document.getElementById('loanResult').textContent = `RM ${monthlyPayment.toFixed(2)}`;
+            document.getElementById('totalInterestResult').innerHTML = `Total Interest Payable: <strong>RM ${totalInterest.toFixed(2)}</strong>`;
+        }
+
+        function calculateCompound() {
+            const P = parseFloat(document.getElementById('fdPrincipal').value) || 0;
+            const annualRate = parseFloat(document.getElementById('fdRate').value) || 0;
+            const n = parseInt(document.getElementById('fdCompounding').value) || 1;
+            const t = parseFloat(document.getElementById('fdYears').value) || 0;
+            const r = annualRate / 100;
+            const A = P * Math.pow((1 + (r / n)), (n * t));
+            document.getElementById('fdResult').textContent = `RM ${A.toFixed(2)}`;
+        }
+
+        function generateAmortizationSchedule() {
+            const P = parseFloat(document.getElementById('amortAmount').value) || 0;
+            const annualRate = parseFloat(document.getElementById('amortRate').value) || 0;
+            const years = parseFloat(document.getElementById('amortYears').value) || 0;
+            const method = document.querySelector('input[name="amortMethod"]:checked').value;
+            const container = document.getElementById('amortTableContainer');
+            const downloadBtn = document.getElementById('downloadAmortBtn');
+
+            if (P <= 0 || annualRate <= 0 || years <= 0) {
+                container.style.display = 'none';
+                downloadBtn.style.display = 'none';
+                return;
+            }
+
+            const totalMonths = years * 12;
+            let html = '<table><thead><tr><th>Month</th><th>Payment</th><th>Principal Paid</th><th>Interest Paid</th><th>Remaining Balance</th></tr></thead><tbody>';
+            let balance = P;
+
+            if (method === 'reducing') {
+                const monthlyRate = (annualRate / 100) / 12;
+                const monthlyPayment = (P * monthlyRate * Math.pow(1 + monthlyRate, totalMonths)) / (Math.pow(1 + monthlyRate, totalMonths) - 1);
+
+                for (let i = 1; i <= totalMonths; i++) {
+                    const interestPaid = balance * monthlyRate;
+                    let principalPaid = monthlyPayment - interestPaid;
+
+                    if (i === totalMonths) {
+                        principalPaid = balance;
+                    }
+
+                    balance -= principalPaid;
+                    if (balance < 0) balance = 0;
+
+                    html += `<tr>
+                        <td>${i}</td>
+                        <td>RM ${(principalPaid + interestPaid).toFixed(2)}</td>
+                        <td>RM ${principalPaid.toFixed(2)}</td>
+                        <td>RM ${interestPaid.toFixed(2)}</td>
+                        <td>RM ${balance.toFixed(2)}</td>
+                    </tr>`;
+                }
+            } else {
+                const totalInterest = P * (annualRate / 100) * years;
+                const monthlyPayment = (P + totalInterest) / totalMonths;
+                const monthlyInterestPaid = totalInterest / totalMonths;
+                const monthlyPrincipalPaid = P / totalMonths;
+
+                for (let i = 1; i <= totalMonths; i++) {
+                    balance -= monthlyPrincipalPaid;
+                    if (balance < 0) balance = 0;
+
+                    html += `<tr>
+                        <td>${i}</td>
+                        <td>RM ${monthlyPayment.toFixed(2)}</td>
+                        <td>RM ${monthlyPrincipalPaid.toFixed(2)}</td>
+                        <td>RM ${monthlyInterestPaid.toFixed(2)}</td>
+                        <td>RM ${balance.toFixed(2)}</td>
+                    </tr>`;
+                }
+            }
+
+            html += '</tbody></table>';
+            container.innerHTML = html;
+            container.style.display = 'block';
+            downloadBtn.style.display = 'block';
+        }
+
+        // CONNECTS TRIGGER PIPELINE DIRECTLY TO PYTHON OPENPYXL FOR ADVANCED LAYOUTS
+        function downloadAmortizationExcel() {
+            const P = parseFloat(document.getElementById('amortAmount').value) || 0;
+            const annualRate = parseFloat(document.getElementById('amortRate').value) || 0;
+            const years = parseFloat(document.getElementById('amortYears').value) || 0;
+            const method = document.querySelector('input[name="amortMethod"]:checked').value;
+
+            if (P <= 0 || annualRate <= 0 || years <= 0) return;
+
+            if (!pyodide) {
+                alert("The Python runtime engine hasn't fully loaded yet. Please wait a moment.");
+                return;
+            }
+
+            const pythonEngine = pyodide.globals.get('generate_pro_amort_excel_bytes');
+            if (!pythonEngine) {
+                alert("The Python formatting engine is still initializing. Please wait a moment.");
+                return;
+            }
+
+            const base64Data = pythonEngine(P, annualRate, years, method);
+
+            const sliceSize = 1024;
+            const byteCharacters = atob(base64Data);
+            const byteArrays = [];
+
+            for (let offset = 0; offset < byteCharacters.length; offset += sliceSize) {
+                const slice = byteCharacters.slice(offset, offset + sliceSize);
+                const byteNumbers = new Array(slice.length);
+                for (let i = 0; i < slice.length; i++) {
+                    byteNumbers[i] = slice.charCodeAt(i);
+                }
+                byteArrays.push(new Uint8Array(byteNumbers));
+            }
+
+            const blob = new Blob(byteArrays, {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `Loan_Amortization_Schedule_${method}.xlsx`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
