@@ -105,7 +105,7 @@ def parse_bank_islam_page(page_text, page_num=1):
         if any(f in line.lower() for f in BANK_ISLAM_SKIP_KEYWORDS):
             continue
 
-        date_match = re.match(r"^(\d{1,2}/\d{2}/\d{2})", line)
+        date_match = re.match(r"^(\d{1,2}/\d{2}/\d{2,4})", line)
 
         if date_match:
             date_str = date_match.group(1)
