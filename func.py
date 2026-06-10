@@ -374,3 +374,155 @@ def process_pdf(pdf_content: str, bank_name: str):
     """Main function to be called from JavaScript"""
     result = convert_bank(pdf_content, bank_name)
     return json.dumps(result)
+
+import io
+import base64
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+
+
+def generate_pro_amort_excel_bytes(principal, annual_rate, years, method):
+    # (Includes the full visualization setup framework detailed in the code block above...)
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Schedule"
+
+    # ... [Execute formatting steps 1 through 7 from the previous script here] ...
+
+    # Save file directly into a virtual byte memory buffer stream instead of a hard disk
+    excel_buffer = io.BytesIO()
+    wb.save(excel_buffer)
+    excel_buffer.seek(0)
+
+    # Encode as base64 string so JavaScript can translate it effortlessly
+    return base64.b64encode(excel_buffer.getvalue()).decode('utf-8')
+
+
+import io
+import base64
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+
+
+def generate_pro_amort_excel_bytes(principal, annual_rate, years, method):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Amortization Schedule"
+
+    # Force grid lines visible & landscape page orientation
+    ws.views.sheetView[0].showGridLines = True
+    ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+
+    # Typography & Color Palettes
+    font_name = "Segoe UI"
+    title_font = Font(name=font_name, size=16, bold=True, color="1A365D")
+    label_font = Font(name=font_name, size=10, bold=True, color="2D3748")
+    reg_font = Font(name=font_name, size=10, color="2D3748")
+    header_font = Font(name=font_name, size=11, bold=True, color="FFFFFF")
+    total_font = Font(name=font_name, size=10, bold=True, color="000000")
+
+    header_fill = PatternFill(start_color="2B6CB0", end_color="2B6CB0", fill_type="solid")  # Corporate Slate Blue
+    zebra_fill = PatternFill(start_color="F7FAFC", end_color="F7FAFC",
+                             fill_type="solid")  # Clean alternating light gray
+
+    thin_side = Side(border_style="thin", color="E2E8F0")
+    double_side = Side(border_style="double", color="4A5568")
+    grid_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+    summary_border = Border(top=thin_side, bottom=double_side)
+
+    # Metadata Summary Header Blocks
+    ws["A1"] = "LOAN AMORTIZATION SCHEDULE"
+    ws["A1"].font = title_font
+
+    metadata = [
+        ("Base Loan Principal:", principal, "RM #,##0.00"),
+        ("Nominal Annual Rate:", annual_rate / 100, "0.00%"),
+        ("Term Horizon (Years):", years, "0"),
+        ("Calculation Framework:", method.title(), "@")
+    ]
+
+    for idx, (label, val, num_format) in enumerate(metadata, start=3):
+        ws[f"A{idx}"] = label
+        ws[f"A{idx}"].font = label_font
+        ws[f"B{idx}"] = val
+        ws[f"B{idx}"].font = reg_font
+        ws[f"B{idx}"].number_format = num_format
+        ws[f"B{idx}"].alignment = Alignment(horizontal="left")
+
+    # Table Structural Column Assignments
+    headers = ["Month", "Scheduled Payment", "Principal Component", "Interest Component", "Remaining Balance"]
+    start_row = 8
+
+    for col_idx, text in enumerate(headers, start=1):
+        cell = ws.cell(row=start_row, column=col_idx, value=text)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center" if col_idx == 1 else "right", vertical="center")
+        cell.border = grid_border
+
+    total_months = int(years * 12)
+    data_start = start_row + 1
+
+    # Seed the starting opening principal balance row
+    ws.cell(row=data_start, column=5, value=principal).number_format = "RM #,##0.00"
+    ws.cell(row=data_start, column=5).font = reg_font
+
+    # Primary Equation Construction Engine
+    for m in range(1, total_months + 1):
+        prev_row = data_start + m - 1
+        curr_row = data_start + m
+        r_str = str(curr_row)
+
+        ws.cell(row=curr_row, column=1, value=m).alignment = Alignment(horizontal="center")
+
+        if method == "reducing":
+            rate_var = "($B$4/12)"
+            ws.cell(row=curr_row, column=2,
+                    value=f"=ROUND((E{prev_row}*{rate_var})/(1-(1+{rate_var})^(-({total_months}-{m}+1))), 2)")
+            ws.cell(row=curr_row, column=4, value=f"=ROUND(E{prev_row}*{rate_var}, 2)")
+            ws.cell(row=curr_row, column=3, value=f"=B{r_str}-D{r_str}")
+            ws.cell(row=curr_row, column=5, value=f"=MAX(0, ROUND(E{prev_row}-C{r_str}, 2))")
+        else:
+            ws.cell(row=curr_row, column=2, value=f"=ROUND(($B$3 + ($B$3 * $B$4 * $B$5)) / {total_months}, 2)")
+            ws.cell(row=curr_row, column=4, value=f"=ROUND(($B$3 * $B$4 * $B$5) / {total_months}, 2)")
+            ws.cell(row=curr_row, column=3, value=f"=B{r_str}-D{r_str}")
+            ws.cell(row=curr_row, column=5, value=f"=MAX(0, ROUND(E{prev_row}-C{r_str}, 2))")
+
+        # Clean cosmetic treatments
+        for col_idx in range(1, 6):
+            c = ws.cell(row=curr_row, column=col_idx)
+            c.font = reg_font
+            c.border = grid_border
+            if col_idx > 1:
+                c.number_format = "RM #,##0.00"
+            if m % 2 == 0:
+                c.fill = zebra_fill
+
+    # Bottom Summary Row Execution
+    total_row = data_start + total_months + 1
+    ws.cell(row=total_row, column=1, value="Total Summary").font = total_font
+    ws.cell(row=total_row, column=1).border = summary_border
+
+    for col_idx, letter in enumerate(["B", "C", "D"], start=2):
+        cell = ws.cell(row=total_row, column=col_idx, value=f"=SUM({letter}{data_start + 1}:{letter}{total_row - 1})")
+        cell.font = total_font
+        cell.number_format = "RM #,##0.00"
+        cell.border = summary_border
+
+    # Responsive Print-Ready Layout Auto-fits
+    for col in ws.columns:
+        max_len = max(len(str(cell.value or '')) for cell in col)
+        col_letter = get_column_letter(col[0].column)
+        ws.column_dimensions[col_letter].width = max(max_len + 4, 14)
+
+    # Export to raw binary buffer string
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return base64.b64encode(buffer.getvalue()).decode('utf-8')
