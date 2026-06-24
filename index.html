@@ -287,6 +287,197 @@
         }
         .result-box h4 { color: #276749; margin-bottom: 5px; }
         .result-value { font-size: 20px; font-weight: bold; color: #2f855a; }
+
+        /* ===== MP3 PLAYER (scoped, won't affect the rest of the page) ===== */
+        .mp3-player-section {
+            --mp3-ink: #1b1812;
+            --mp3-paper: #f6f1e7;
+            --mp3-groove: #2a241c;
+            --mp3-groove-light: #3c342a;
+            --mp3-accent: #c8551f;
+            --mp3-line: #d8cdb8;
+            margin-top: 20px;
+        }
+        .mp3-player-section .player {
+            width: 100%;
+            max-width: 480px;
+            margin: 0 auto;
+            background: var(--mp3-paper);
+            border: 1px solid var(--mp3-line);
+            border-radius: 12px;
+            padding: 28px 28px 20px;
+            font-family: 'Georgia', 'Iowan Old Style', serif;
+            color: var(--mp3-ink);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+        .mp3-player-section .header {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            margin-bottom: 22px;
+        }
+        .mp3-player-section .disc {
+            width: 64px;
+            height: 64px;
+            flex-shrink: 0;
+            border-radius: 50%;
+            background:
+                radial-gradient(circle at center, var(--mp3-paper) 0 8px, transparent 8.5px),
+                repeating-radial-gradient(circle at center, var(--mp3-groove) 0 1px, var(--mp3-groove-light) 1px 3px);
+            border: 1px solid var(--mp3-ink);
+            position: relative;
+            animation: mp3spin 6s linear infinite;
+            animation-play-state: paused;
+        }
+        .mp3-player-section .disc::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            margin: auto;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--mp3-accent);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        .mp3-player-section .disc.spinning { animation-play-state: running; }
+        @keyframes mp3spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .mp3-player-section .now-playing { overflow: hidden; }
+        .mp3-player-section .eyebrow {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-size: 10px;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: var(--mp3-accent);
+            margin: 0 0 4px;
+        }
+        .mp3-player-section .track-title {
+            font-size: 19px;
+            margin: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .mp3-player-section .track-artist {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-size: 13px;
+            color: #6b6354;
+            margin: 2px 0 0;
+        }
+        .mp3-player-section .controls {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 14px;
+        }
+        .mp3-player-section .mp3-btn {
+            border: none;
+            background: var(--mp3-ink);
+            color: var(--mp3-paper);
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: background 0.15s ease;
+        }
+        .mp3-player-section .mp3-btn:hover { background: var(--mp3-accent); }
+        .mp3-player-section .mp3-btn svg { width: 16px; height: 16px; }
+        .mp3-player-section .mp3-btn-skip {
+            background: none;
+            color: var(--mp3-ink);
+            width: 30px;
+            height: 30px;
+        }
+        .mp3-player-section .mp3-btn-skip:hover { color: var(--mp3-accent); background: none; }
+        .mp3-player-section .seek-row {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-size: 11px;
+            color: #6b6354;
+        }
+        .mp3-player-section input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            flex: 1;
+            height: 3px;
+            background: var(--mp3-line);
+            border-radius: 2px;
+            outline: none;
+        }
+        .mp3-player-section input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 11px;
+            height: 11px;
+            border-radius: 50%;
+            background: var(--mp3-accent);
+            cursor: pointer;
+            margin-top: -1px;
+        }
+        .mp3-player-section input[type="range"]::-moz-range-thumb {
+            width: 11px;
+            height: 11px;
+            border: none;
+            border-radius: 50%;
+            background: var(--mp3-accent);
+            cursor: pointer;
+        }
+        .mp3-player-section .volume-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 18px;
+        }
+        .mp3-player-section .volume-row svg { width: 14px; height: 14px; color: #6b6354; flex-shrink: 0; }
+        .mp3-player-section .volume-row input[type="range"] { max-width: 90px; }
+        .mp3-player-section .playlist {
+            border-top: 1px solid var(--mp3-line);
+            padding-top: 10px;
+            max-height: 220px;
+            overflow-y: auto;
+        }
+        .mp3-player-section .playlist-item {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+            padding: 9px 6px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+        }
+        .mp3-player-section .playlist-item:hover { background: rgba(200, 85, 31, 0.08); }
+        .mp3-player-section .playlist-item.active { background: rgba(200, 85, 31, 0.12); }
+        .mp3-player-section .playlist-index {
+            font-size: 11px;
+            color: var(--mp3-accent);
+            width: 18px;
+            flex-shrink: 0;
+        }
+        .mp3-player-section .playlist-name {
+            font-size: 13.5px;
+            color: var(--mp3-ink);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .mp3-player-section .playlist-artist {
+            font-size: 11.5px;
+            color: #8a8270;
+            margin-left: auto;
+            flex-shrink: 0;
+            padding-left: 8px;
+        }
     </style>
 </head>
 <body>
@@ -468,6 +659,49 @@
             <li><strong>Privacy & Security:</strong> We do not store, upload, or collect your financial statements. The parsing engine runs entirely inside your local web browser—your data never leaves your machine.</li>
             <li><strong>Support:</strong> For any inquiries, feedback, or issues, please reach out to us via email at <a href="mailto:devidahar87@gmail.com">devidahar87@gmail.com</a>.</li>
         </ul>
+    </div>
+
+    <div class="container mp3-player-section">
+      <div class="player">
+
+        <div class="header">
+          <div class="disc" id="mp3Disc"></div>
+          <div class="now-playing">
+            <p class="eyebrow">Now playing</p>
+            <p class="track-title" id="mp3TrackTitle">Select a track</p>
+            <p class="track-artist" id="mp3TrackArtist">&nbsp;</p>
+          </div>
+        </div>
+
+        <div class="controls">
+          <button class="mp3-btn mp3-btn-skip" id="mp3PrevBtn" aria-label="Previous track">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+          </button>
+
+          <button class="mp3-btn" id="mp3PlayBtn" aria-label="Play">
+            <svg viewBox="0 0 24 24" fill="currentColor" id="mp3PlayIcon"><path d="M8 5v14l11-7z"/></svg>
+          </button>
+
+          <button class="mp3-btn mp3-btn-skip" id="mp3NextBtn" aria-label="Next track">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 18h2V6h-2zM6 18l8.5-6L6 6z"/></svg>
+          </button>
+
+          <div class="seek-row">
+            <span id="mp3CurrentTime">0:00</span>
+            <input type="range" id="mp3SeekBar" value="0" min="0" max="100" step="0.1">
+            <span id="mp3Duration">0:00</span>
+          </div>
+        </div>
+
+        <div class="volume-row">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2c0-1.77-1-3.29-2.5-4.03v8.05c1.5-.73 2.5-2.25 2.5-4.02z"/></svg>
+          <input type="range" id="mp3VolumeBar" min="0" max="1" step="0.01" value="0.8">
+        </div>
+
+        <div class="playlist" id="mp3Playlist"></div>
+
+        <audio id="mp3Audio" preload="metadata"></audio>
+      </div>
     </div>
 
 <script>
@@ -1247,6 +1481,122 @@
             link.click();
             document.body.removeChild(link);
         }
+
+        // ===== MP3 PLAYER (self-contained, no globals leaked) =====
+        (function () {
+          // EDIT THIS: your songs
+          const playlist = [
+            { title: "Hidup Sebenar",   artist: "Me", src: "songs/Hidup_Sebenar.mp3" },
+            { title: "Cinta Waktu Sempurna",   artist: "Me", src: "songs/cint_a_sempurna.mpeg" },
+            { title: "Dia selalu ada", artist: "Me", src: "songs/Senyum Pagi Tuhan.mpeg" },
+            { title: "Bendera Zaman Berlalu", artist: "Me", src: "songs/cahaya dari bintang lama.mpeg" },
+            { title: "Layang layang kita dulu", artist: "Me", src: "songs/terbang si layang layang.mpeg" },
+            { title: "Untitled", artist: "Me", src: "songs/PTD.mp3" },
+            { title: "BROSKI", artist: "Me", src: "songs/BROSKI.mpeg" },
+            { title: "Kelu Sekejap", artist: "Me", src: "songs/Hembus je la.mpeg" },
+            { title: "COVER Dikir Atromen", artist: "Me", src: "songs/Atromen Makhluk.mpeg" },
+          ];
+
+          const audio = document.getElementById('mp3Audio');
+          const disc = document.getElementById('mp3Disc');
+          const trackTitle = document.getElementById('mp3TrackTitle');
+          const trackArtist = document.getElementById('mp3TrackArtist');
+          const playBtn = document.getElementById('mp3PlayBtn');
+          const playIcon = document.getElementById('mp3PlayIcon');
+          const prevBtn = document.getElementById('mp3PrevBtn');
+          const nextBtn = document.getElementById('mp3NextBtn');
+          const seekBar = document.getElementById('mp3SeekBar');
+          const currentTimeEl = document.getElementById('mp3CurrentTime');
+          const durationEl = document.getElementById('mp3Duration');
+          const volumeBar = document.getElementById('mp3VolumeBar');
+          const playlistEl = document.getElementById('mp3Playlist');
+
+          if (!audio) return; // player markup not present, bail safely
+
+          let currentIndex = 0;
+          let isSeeking = false;
+
+          const ICON_PLAY = '<path d="M8 5v14l11-7z"/>';
+          const ICON_PAUSE = '<path d="M6 5h4v14H6zm8 0h4v14h-4z"/>';
+
+          function formatTime(sec) {
+            if (!isFinite(sec)) return "0:00";
+            const m = Math.floor(sec / 60);
+            const s = Math.floor(sec % 60).toString().padStart(2, "0");
+            return `${m}:${s}`;
+          }
+
+          function renderPlaylist() {
+            playlistEl.innerHTML = "";
+            playlist.forEach((track, i) => {
+              const item = document.createElement("div");
+              item.className = "playlist-item" + (i === currentIndex ? " active" : "");
+              item.innerHTML = `
+                <span class="playlist-index">${(i + 1).toString().padStart(2, "0")}</span>
+                <span class="playlist-name">${track.title}</span>
+                <span class="playlist-artist">${track.artist}</span>
+              `;
+              item.addEventListener("click", () => loadTrack(i, true));
+              playlistEl.appendChild(item);
+            });
+          }
+
+          function loadTrack(index, autoplay) {
+            currentIndex = (index + playlist.length) % playlist.length;
+            const track = playlist[currentIndex];
+            audio.src = track.src;
+            trackTitle.textContent = track.title;
+            trackArtist.textContent = track.artist;
+            renderPlaylist();
+            if (autoplay) audio.play().catch(() => {});
+          }
+
+          function updatePlayUI() {
+            const playing = !audio.paused && !audio.ended;
+            playIcon.innerHTML = playing ? ICON_PAUSE : ICON_PLAY;
+            disc.classList.toggle("spinning", playing);
+          }
+
+          playBtn.addEventListener("click", () => {
+            if (!audio.src) loadTrack(0, false);
+            if (audio.paused) audio.play(); else audio.pause();
+          });
+
+          prevBtn.addEventListener("click", () => loadTrack(currentIndex - 1, true));
+          nextBtn.addEventListener("click", () => loadTrack(currentIndex + 1, true));
+
+          audio.addEventListener("play", updatePlayUI);
+          audio.addEventListener("pause", updatePlayUI);
+          audio.addEventListener("ended", () => loadTrack(currentIndex + 1, true));
+
+          audio.addEventListener("loadedmetadata", () => {
+            seekBar.max = audio.duration;
+            durationEl.textContent = formatTime(audio.duration);
+          });
+
+          audio.addEventListener("timeupdate", () => {
+            if (!isSeeking) {
+              seekBar.value = audio.currentTime;
+              currentTimeEl.textContent = formatTime(audio.currentTime);
+            }
+          });
+
+          seekBar.addEventListener("input", () => {
+            isSeeking = true;
+            currentTimeEl.textContent = formatTime(seekBar.value);
+          });
+          seekBar.addEventListener("change", () => {
+            audio.currentTime = seekBar.value;
+            isSeeking = false;
+          });
+
+          volumeBar.addEventListener("input", () => {
+            audio.volume = volumeBar.value;
+          });
+          audio.volume = volumeBar.value;
+
+          renderPlaylist();
+        })();
     </script>
 </body>
 </html>
